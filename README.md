@@ -1,5 +1,6 @@
 
-**fantasy-writer-ai** is an AI-powered writing platform designed for **fantasy authors**. It offers an immersive writing experience where users can generate images, create audio narration, and summarize chapters — all powered by intelligent services and managed through a scalable, containerized microservices architecture.
+#fantasy-writer-ai
+is an AI-powered writing platform designed for **fantasy authors**. It offers an immersive writing experience where users can generate images, create audio narration, and summarize chapters — all powered by intelligent services and managed through a scalable, containerized microservices architecture.
 
 ## 🧱 Architecture Overview
 
