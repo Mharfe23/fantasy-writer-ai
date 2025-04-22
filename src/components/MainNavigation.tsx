@@ -3,6 +3,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { ThemeToggle } from "./theme-toggle";
 import { Menu, X } from "lucide-react";
+import { Link } from "react-router-dom";
 
 interface MainNavigationProps {
   isMenuOpen: boolean;
@@ -20,9 +21,9 @@ export default function MainNavigation({ isMenuOpen, setIsMenuOpen }: MainNaviga
             transition={{ duration: 0.5 }}
             className="flex items-center"
           >
-            <a href="/" className="font-semibold text-xl mr-6 bg-clip-text text-transparent bg-gradient-to-r from-purple-500 to-indigo-400">
+            <Link to="/" className="font-semibold text-xl mr-6 bg-clip-text text-transparent bg-gradient-to-r from-purple-500 to-indigo-400">
               Fantasy Writer AI
-            </a>
+            </Link>
           </motion.div>
           
           <div className="hidden md:flex items-center gap-6">
@@ -44,13 +45,13 @@ export default function MainNavigation({ isMenuOpen, setIsMenuOpen }: MainNaviga
               transition={{ delay: 0.2, duration: 0.5 }}
               className="flex items-center gap-4"
             >
-              <a href="/login" className="text-sm font-medium text-foreground/70 hover:text-foreground transition">Login</a>
-              <a 
-                href="/signup" 
+              <Link to="/dashboard" className="text-sm font-medium text-foreground/70 hover:text-foreground transition">Dashboard</Link>
+              <Link 
+                to="/signup" 
                 className="text-sm font-medium bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-4 py-2 rounded-full hover:opacity-90 transition"
               >
                 Sign Up
-              </a>
+              </Link>
               <ThemeToggle />
             </motion.div>
           </div>
@@ -77,14 +78,15 @@ export default function MainNavigation({ isMenuOpen, setIsMenuOpen }: MainNaviga
             <a href="#how-it-works" className="py-2 text-foreground/70 hover:text-foreground transition">How It Works</a>
             <a href="#pricing" className="py-2 text-foreground/70 hover:text-foreground transition">Pricing</a>
             <a href="#faq" className="py-2 text-foreground/70 hover:text-foreground transition">FAQ</a>
+            <Link to="/dashboard" className="py-2 text-foreground/70 hover:text-foreground transition">Dashboard</Link>
             <div className="flex items-center gap-4 py-2">
-              <a href="/login" className="font-medium text-foreground/70 hover:text-foreground transition">Login</a>
-              <a 
-                href="/signup" 
+              <Link to="/login" className="font-medium text-foreground/70 hover:text-foreground transition">Login</Link>
+              <Link 
+                to="/signup" 
                 className="font-medium bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-4 py-2 rounded-full hover:opacity-90 transition"
               >
                 Sign Up
-              </a>
+              </Link>
             </div>
           </div>
         </motion.div>
