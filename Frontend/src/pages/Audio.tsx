@@ -27,12 +27,13 @@ import {
 } from "@/components/ui/collapsible";
 import DashboardLayout from "@/components/DashboardLayout";
 import NewAudioForm from "@/components/audio/NewAudioForm";
+import { AMERICAN_ENGLISH_VOICES } from "@/services/kokoroTtsService";
 
 // Dummy data for demonstration
 const audioFiles = [
-  { id: 1, title: "Chapter 1 - The Beginning", project: "The Crystal Kingdom", duration: "12:45", date: "2 days ago", voice: "Roger" },
-  { id: 2, title: "Chapter 2 - The Journey", project: "The Crystal Kingdom", duration: "15:30", date: "2 days ago", voice: "Sarah" },
-  { id: 3, title: "Introduction", project: "Dragons of the North", duration: "5:20", date: "1 week ago", voice: "Brian" },
+  { id: 1, title: "Chapter 1 - The Beginning", project: "The Crystal Kingdom", duration: "12:45", date: "2 days ago", voice: "af_heart" },
+  { id: 2, title: "Chapter 2 - The Journey", project: "The Crystal Kingdom", duration: "15:30", date: "2 days ago", voice: "af_sarah" },
+  { id: 3, title: "Introduction", project: "Dragons of the North", duration: "5:20", date: "1 week ago", voice: "am_adam" },
 ];
 
 export default function Audio() {
@@ -47,7 +48,25 @@ export default function Audio() {
   };
   
   const handleDownloadAudio = () => {
-    toast.success("Audio downloaded successfully");
+    // Get the generated audio data from global storage
+    const generatedAudio = (window as any).lastGeneratedAudio;
+    if (generatedAudio && generatedAudio.audioUrl) {
+      // Create download link
+      const link = document.createElement('a');
+      link.href = generatedAudio.audioUrl;
+      link.download = `kokoro-tts-audio-${Date.now()}.wav`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success("Audio download started");
+    } else {
+      toast.error("No audio available for download");
+    }
+  };
+
+  const getVoiceLabel = (voiceValue: string) => {
+    const voice = AMERICAN_ENGLISH_VOICES.find(v => v.value === voiceValue);
+    return voice ? voice.label : voiceValue;
   };
   
   return (
@@ -78,36 +97,65 @@ export default function Audio() {
                       <CirclePlay size={24} className="text-primary" />
                     </div>
                     <div>
-                      <p className="font-medium">Your Audio</p>
-                      <p className="text-sm text-muted-foreground">Voice: Roger • 3:24 minutes</p>
+                      <p className="font-medium">Kokoro TTS Audio</p>
+                      <p className="text-sm text-muted-foreground">
+                        Voice: {(() => {
+                          const generatedAudio = (window as any).lastGeneratedAudio;
+                          return generatedAudio ? getVoiceLabel(generatedAudio.voice) : "Unknown";
+                        })()} • Speed: {(() => {
+                          const generatedAudio = (window as any).lastGeneratedAudio;
+                          return generatedAudio ? `${generatedAudio.speed}x` : "1x";
+                        })()}
+                      </p>
                     </div>
                   </div>
                   
-                  <div className="bg-background border border-border rounded-md p-3 flex items-center gap-3">
-                    <Button size="icon" variant="outline" className="h-8 w-8">
-                      <Play size={16} />
-                    </Button>
-                    
-                    <div className="w-full">
-                      <Slider defaultValue={[0]} max={100} step={1} className="my-1" />
-                      <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                        <span>0:00</span>
-                        <span>3:24</span>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-2">
-                      <Volume2 size={16} className="text-muted-foreground" />
-                      <Slider defaultValue={[80]} max={100} step={1} className="w-20" />
-                    </div>
+                  <div className="bg-background border border-border rounded-md p-3 mb-4">
+                    {(() => {
+                      const generatedAudio = (window as any).lastGeneratedAudio;
+                      if (generatedAudio && generatedAudio.audioUrl) {
+                        return (
+                          <audio 
+                            controls 
+                            className="w-full"
+                            src={generatedAudio.audioUrl}
+                          >
+                            Your browser does not support the audio element.
+                          </audio>
+                        );
+                      }
+                      return (
+                        <div className="flex items-center gap-3">
+                          <Button size="icon" variant="outline" className="h-8 w-8">
+                            <Play size={16} />
+                          </Button>
+                          
+                          <div className="w-full">
+                            <Slider defaultValue={[0]} max={100} step={1} className="my-1" />
+                            <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                              <span>0:00</span>
+                              <span>--:--</span>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-2">
+                            <Volume2 size={16} className="text-muted-foreground" />
+                            <Slider defaultValue={[80]} max={100} step={1} className="w-20" />
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
-                </div>
-                
-                <div className="mt-4 p-4 rounded-md bg-muted">
-                  <p className="text-sm font-medium mb-1">Text:</p>
-                  <p className="text-sm text-muted-foreground line-clamp-3">
-                    Once upon a time in a land far away, a young wizard discovered an ancient tome. The pages glowed with an ethereal light, revealing secrets long forgotten.
-                  </p>
+                  
+                  <div className="mt-4 p-4 rounded-md bg-muted">
+                    <p className="text-sm font-medium mb-1">Text:</p>
+                    <p className="text-sm text-muted-foreground line-clamp-3">
+                      {(() => {
+                        const generatedAudio = (window as any).lastGeneratedAudio;
+                        return generatedAudio ? generatedAudio.prompt : "No text available";
+                      })()}
+                    </p>
+                  </div>
                 </div>
                 
                 <div className="flex flex-wrap gap-2 mt-4 justify-end">
@@ -145,7 +193,9 @@ export default function Audio() {
                       </div>
                       <div className="text-left">
                         <p className="font-medium line-clamp-1">{audio.title}</p>
-                        <p className="text-xs text-muted-foreground">{audio.project} • {audio.duration}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {audio.project} • {audio.duration} • {getVoiceLabel(audio.voice)}
+                        </p>
                       </div>
                     </div>
                     <ChevronDown size={16} className="text-muted-foreground" />
