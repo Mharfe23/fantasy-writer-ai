@@ -1,4 +1,3 @@
-
 import { ReactNode, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -11,7 +10,8 @@ import {
   FileText, 
   CirclePlay, 
   Bell, 
-  Cog
+  Cog,
+  Book
 } from "lucide-react";
 
 interface DashboardLayoutProps {
@@ -26,6 +26,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     { label: "Dashboard", icon: <LayoutDashboard size={20} />, path: "/dashboard" },
     { label: "Editor", icon: <BookOpen size={20} />, path: "/editor" },
     { label: "Images", icon: <Image size={20} />, path: "/image-generator" },
+    { label: "Book", icon: <Book size={20} />, path: "/book" },
     { label: "Audio", icon: <CirclePlay size={20} />, path: "/audio" },
     { label: "Summaries", icon: <FileText size={20} />, path: "/summaries" },
   ];
@@ -109,6 +110,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               {location.pathname === '/dashboard' && 'Dashboard'}
               {location.pathname === '/editor' && 'Story Editor'}
               {location.pathname === '/image-generator' && 'Image Generator'}
+              {location.pathname === '/book' && 'Book Generator'}
               {location.pathname === '/audio' && 'Audio Narration'}
               {location.pathname === '/summaries' && 'Summary Generation'}
               {location.pathname === '/settings' && 'Account Settings'}
