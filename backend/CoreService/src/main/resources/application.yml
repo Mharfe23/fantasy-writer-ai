@@ -1,0 +1,11 @@
+spring:
+  application:
+    name: CoreService
+  data:
+    mongodb:
+      authentication-database: admin
+      username: username
+      password: password
+      database: fantasy
+      port: 27017
+      host: localhost
