@@ -1,6 +1,5 @@
-
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
@@ -9,35 +8,35 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Facebook, Github, Mail } from "lucide-react";
+import { authService } from "@/services/auth.service";
 
 export default function Login() {
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     
     try {
-      // In a real app, this would connect to your auth provider
-      console.log("Logging in with:", email, password);
-      
-      // Simulate login success
-      setTimeout(() => {
-        toast({
-          title: "Login successful",
-          description: "Welcome back to Fantasy Writer AI!",
-        });
-        window.location.href = "/dashboard";
-      }, 1500);
-    } catch (error) {
+      await authService.login(username, password);
+      toast({
+        title: "Login successful",
+        description: "Welcome back to Fantasy Writer AI!",
+      });
+      navigate("/dashboard");
+    } catch (error: any) {
+      e.preventDefault(); // Prevent form submission
       toast({
         variant: "destructive",
         title: "Login failed",
-        description: "Please check your credentials and try again.",
+        description: error.response?.data?.error || "Please check your credentials and try again.",
       });
+      // Clear password field on error
+      setPassword("");
     } finally {
       setIsLoading(false);
     }
@@ -127,13 +126,13 @@ export default function Login() {
               
               <form onSubmit={handleEmailLogin} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="username">Username</Label>
                   <Input 
-                    id="email" 
-                    type="email" 
-                    placeholder="name@example.com" 
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    id="username" 
+                    type="text" 
+                    placeholder="Enter your username" 
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
                     required
                   />
                 </div>

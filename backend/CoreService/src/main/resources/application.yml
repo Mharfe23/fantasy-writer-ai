@@ -9,3 +9,25 @@ spring:
       database: fantasy
       port: 27017
       host: localhost
+  datasource:
+    url: jdbc:postgresql://localhost:5432/fantasy_writer_db
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+
+server:
+  port: 8080
+
+app:
+  jwt:
+    secret: your-256-bit-secret-key-here-make-it-long-and-secure
+    expiration: 86400000 # 24 hours in milliseconds
