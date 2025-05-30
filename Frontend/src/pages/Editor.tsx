@@ -1,4 +1,6 @@
+
 import { useState, useRef, useEffect } from "react";
+
 import { motion } from "framer-motion";
 import { Save, Image, CirclePlay, FileText, BookOpen, ArrowDown, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -14,11 +16,14 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import DashboardLayout from "@/components/DashboardLayout";
+
 import { useParams, useNavigate } from "react-router-dom";
 import bookService, { Book } from "@/services/book.service";
 import pageService, { Page, CreatePageRequest } from "@/services/page.service";
 import imagePromptService, { ImagePrompt, CreateImagePromptRequest } from "@/services/image-prompt.service";
 import chapterService, { Chapter, CreateChapterRequest } from "@/services/chapter.service";
+import { generateImageWithTogether, saveGeneratedImage, getStoredImages, type GeneratedImage } from "@/services/imageGenerationService";
+
 
 export default function Editor() {
   const { id } = useParams<{ id: string }>();
@@ -30,6 +35,7 @@ export default function Editor() {
   const [showImagePreview, setShowImagePreview] = useState<boolean>(false);
   const [selectionStart, setSelectionStart] = useState<number | null>(null);
   const [selectionEnd, setSelectionEnd] = useState<number | null>(null);
+
   const [isLoading, setIsLoading] = useState(true);
   const [currentChapter, setCurrentChapter] = useState<string>("");
   const [currentPage, setCurrentPage] = useState<string>("");
@@ -40,6 +46,10 @@ export default function Editor() {
   const [newChapterTitle, setNewChapterTitle] = useState("");
   const [isCreatingPage, setIsCreatingPage] = useState(false);
   const [newPageContent, setNewPageContent] = useState("");
+  const [isGeneratingImage, setIsGeneratingImage] = useState<boolean>(false);
+  const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
+  const [currentGeneratedImage, setCurrentGeneratedImage] = useState<GeneratedImage | null>(null);
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -195,6 +205,11 @@ export default function Editor() {
     }
   };
   
+  // Load existing generated images on component mount
+  useState(() => {
+    setGeneratedImages(getStoredImages());
+  });
+  
   const handleSelectText = () => {
     if (textareaRef.current) {
       const start = textareaRef.current.selectionStart;
@@ -227,30 +242,64 @@ export default function Editor() {
   };
   
   const handleGenerateImage = async () => {
-    if (!selectedText || !currentPage) {
-      toast.error("Please select text to generate an image");
-      return;
+  if (!selectedText || !currentPage) {
+    toast.error("Please select text to generate an image");
+    return;
+  }
+  
+  setIsGeneratingImage(true);
+  
+  try {
+    toast.info("Generating image from selected text...");
+    const imageUrl = await generateImageWithTogether(selectedText);
+    
+    // Convert the image URL to a blob
+    const response = await fetch(imageUrl);
+    const blob = await response.blob();
+    
+    // Create form data for the upload
+    const formData = new FormData();
+    formData.append('file', blob, 'generated-image.jpg');
+    
+    // Upload to your backend
+    const uploadResponse = await fetch(`${API_URL}/api/images/upload`, {
+      method: 'POST',
+      headers: {
+        ...getAuthHeader(),
+      },
+      body: formData
+    });
+    
+    if (!uploadResponse.ok) {
+      throw new Error('Failed to upload image');
     }
     
-    try {
-      // In a real app, this would call an image generation API
-      const imagePath = "/path/to/generated/image.jpg"; // This would come from the image generation API
-      
-      const newPrompt: CreateImagePromptRequest = {
-        selectedText,
-        imagePath,
-        pageId: currentPage
-      };
-
-      const createdPrompt = await imagePromptService.createImagePrompt(newPrompt);
-      setImagePrompts([...imagePrompts, createdPrompt]);
-      setShowImagePreview(true);
-      toast.success("Image generated successfully");
-    } catch (error) {
-      console.error("Error generating image:", error);
-      toast.error("Failed to generate image");
-    }
-  };
+    const { imagePath } = await uploadResponse.json();
+    
+    // Create the image prompt with the MinIO path
+    const newPrompt: CreateImagePromptRequest = {
+      selectedText,
+      imagePath,
+      pageId: currentPage
+    };
+    
+    const createdPrompt = await imagePromptService.createImagePrompt(newPrompt);
+    setImagePrompts([...imagePrompts, createdPrompt]);
+    
+    // Also update the local state for immediate display
+    const savedImage = saveGeneratedImage(selectedText, imageUrl);
+    setCurrentGeneratedImage(savedImage);
+    setGeneratedImages(prev => [savedImage, ...prev]);
+    setShowImagePreview(true);
+    
+    toast.success("Image generated and saved successfully!");
+  } catch (error) {
+    console.error("Image generation failed:", error);
+    toast.error("Failed to generate image. Please try again.");
+  } finally {
+    setIsGeneratingImage(false);
+  }
+};
   
   const handleGenerateAudio = () => {
     if (!selectedText && content.length === 0) {
@@ -467,11 +516,13 @@ export default function Editor() {
                     variant={selectedText ? "default" : "secondary"}
                     size="sm"
                     onClick={handleGenerateImage}
-                    disabled={!selectedText || isCreatingPage}
+                    disabled={!selectedText || isGeneratingImage || isCreatingPage}
+                    
                     className="relative"
                   >
-                    <Image size={16} className="mr-1" /> Generate Image
-                    {selectedText && (
+                    <Image size={16} className="mr-1" /> 
+                    {isGeneratingImage ? "Generating..." : "Generate Image"}
+                    {selectedText && !isGeneratingImage && (
                       <span className="absolute -top-1 -right-1 w-3 h-3 bg-primary rounded-full animate-pulse"></span>
                     )}
                   </Button>
@@ -520,8 +571,10 @@ export default function Editor() {
                     <Button 
                       size="sm"
                       onClick={handleGenerateImage}
+                      disabled={isGeneratingImage}
                     >
-                      <Image size={14} className="mr-1.5" /> Generate Now
+                      <Image size={14} className="mr-1.5" /> 
+                      {isGeneratingImage ? "Generating..." : "Generate Now"}
                     </Button>
                   </div>
                 </motion.div>
@@ -555,31 +608,33 @@ export default function Editor() {
             
             <TabsContent value="images" className="min-h-[600px]">
               <div className="bg-card border border-border rounded-lg p-6 h-full flex flex-col">
-                <h3 className="text-lg font-semibold mb-4">Generated Images</h3>
+                <h3 className="text-lg font-semibold mb-4">Generated Images ({generatedImages.length})</h3>
                 
-                {imagePrompts.length > 0 ? (
-                  <div className="space-y-4">
-                    {imagePrompts.map((prompt) => (
-                      <div key={prompt.id} className="border rounded-lg overflow-hidden">
-                        <div className="aspect-square w-full bg-gradient-to-br from-purple-500/20 to-indigo-500/20 flex items-center justify-center">
-                          <div className="p-6 text-center">
-                            <Image size={48} className="mx-auto mb-2 text-purple-500/70" />
-                            <p className="text-sm text-muted-foreground">Image preview</p>
-                          </div>
+
+                {generatedImages.length > 0 ? (
+                  <div className="space-y-4 overflow-y-auto">
+                    {generatedImages.map((image, index) => (
+                      <div key={image.id} className="border rounded-lg p-3">
+                        <div className="aspect-square w-full rounded-lg overflow-hidden mb-2">
+                          <img
+                            src={image.imageUrl}
+                            alt={`Generated image ${index + 1}`}
+                            className="w-full h-full object-cover"
+                          />
                         </div>
-                        <div className="p-4">
-                          <h4 className="text-sm font-medium mb-1">Generated from:</h4>
-                          <p className="text-sm text-muted-foreground bg-muted p-3 rounded-md">
-                            {prompt.selectedText}
+                        <div>
+                          <h4 className="text-sm font-medium mb-1">Prompt:</h4>
+                          <p className="text-xs text-muted-foreground bg-muted p-2 rounded-md">
+                            {image.prompt}
                           </p>
-                          <div className="flex space-x-2 mt-2">
-                            <Button variant="outline" size="sm" className="flex-1">
-                              Regenerate
-                            </Button>
-                            <Button variant="outline" size="sm" className="flex-1">
-                              Save Image
-                            </Button>
-                          </div>
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-2">
+                          Generated: {new Date(image.timestamp).toLocaleString()}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
                         </div>
                       </div>
                     ))}
@@ -597,7 +652,7 @@ export default function Editor() {
                       variant="secondary" 
                       size="sm"
                       onClick={handleGenerateImage}
-                      disabled={!selectedText}
+                      disabled={!selectedText || isGeneratingImage}
                     >
                       <Image size={16} className="mr-1" /> Generate Image
                     </Button>

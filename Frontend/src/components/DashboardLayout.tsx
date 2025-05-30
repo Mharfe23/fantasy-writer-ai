@@ -11,7 +11,8 @@ import {
   CirclePlay, 
   Bell, 
   Cog,
-  LogOut
+  LogOut,Book
+
 } from "lucide-react";
 import { authService } from "@/services/auth.service";
 import { Button } from "@/components/ui/button";
@@ -38,6 +39,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     { label: "Dashboard", icon: <LayoutDashboard size={20} />, path: "/dashboard" },
     { label: "Editor", icon: <BookOpen size={20} />, path: "/dashboard", onClick: () => toast.info("Please select a book from the dashboard to edit") },
     { label: "Images", icon: <Image size={20} />, path: "/image-generator" },
+    { label: "Book", icon: <Book size={20} />, path: "/book" },
     { label: "Audio", icon: <CirclePlay size={20} />, path: "/audio" },
     { label: "Summaries", icon: <FileText size={20} />, path: "/summaries" },
   ];
@@ -122,6 +124,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               {location.pathname === '/dashboard' && 'Dashboard'}
               {location.pathname === '/editor' && 'Story Editor'}
               {location.pathname === '/image-generator' && 'Image Generator'}
+              {location.pathname === '/book' && 'Book Generator'}
               {location.pathname === '/audio' && 'Audio Narration'}
               {location.pathname === '/summaries' && 'Summary Generation'}
               {location.pathname === '/settings' && 'Account Settings'}

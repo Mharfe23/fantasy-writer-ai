@@ -1,10 +1,11 @@
 
-import { useState } from "react";
-import { CirclePlay, Upload } from "lucide-react";
+import { useState, useEffect } from "react";
+import { CirclePlay, Upload, Key } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -14,6 +15,14 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
+import { 
+  generateAudioWithKokoro, 
+  saveGeneratedAudio, 
+  AMERICAN_ENGLISH_VOICES,
+  setFalApiKey,
+  getFalApiKey,
+  type VoiceType
+} from "@/services/kokoroTtsService";
 
 interface NewAudioFormProps {
   onAudioGenerated: () => void;
@@ -23,30 +32,120 @@ export default function NewAudioForm({ onAudioGenerated }: NewAudioFormProps) {
   const [text, setText] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeTab, setActiveTab] = useState("text");
-  const [voice, setVoice] = useState("roger");
+  const [voice, setVoice] = useState<VoiceType>("af_heart");
   const [speed, setSpeed] = useState([1]);
-  const [quality, setQuality] = useState("standard");
-  const [format, setFormat] = useState("mp3");
+  const [apiKey, setApiKey] = useState("");
+  const [showApiKeyInput, setShowApiKeyInput] = useState(false);
   
-  const handleGenerateAudio = () => {
+  useEffect(() => {
+    const storedApiKey = getFalApiKey();
+    if (storedApiKey) {
+      setApiKey(storedApiKey);
+    } else {
+      setShowApiKeyInput(true);
+    }
+  }, []);
+  
+  const handleSaveApiKey = () => {
+    if (apiKey.trim()) {
+      setFalApiKey(apiKey.trim());
+      setShowApiKeyInput(false);
+      toast.success("API key saved successfully!");
+    } else {
+      toast.error("Please enter a valid API key");
+    }
+  };
+  
+  const handleGenerateAudio = async () => {
     if (text.length < 10 && activeTab === "text") {
       toast.error("Please enter more text to generate audio");
       return;
     }
     
+    if (!getFalApiKey()) {
+      toast.error("Please set your FAL API key first");
+      setShowApiKeyInput(true);
+      return;
+    }
+    
     setIsGenerating(true);
     
-    // Simulate API call
-    setTimeout(() => {
-      setIsGenerating(false);
+    try {
+      toast.info("Generating audio with Kokoro TTS...");
+      
+      const audioUrl = await generateAudioWithKokoro({
+        prompt: text,
+        voice: voice,
+        speed: speed[0]
+      });
+      
+      // Save the generated audio
+      const savedAudio = saveGeneratedAudio({
+        prompt: text,
+        voice: voice,
+        speed: speed[0]
+      }, audioUrl);
+      
+      // Store globally for the preview component
+      window.lastGeneratedAudio = {
+        prompt: text,
+        voice: voice,
+        speed: speed[0],
+        audioUrl: audioUrl,
+        timestamp: new Date().toISOString()
+      };
+      
       onAudioGenerated();
-      toast.success("Audio generated successfully");
-    }, 2000);
+      toast.success("Audio generated successfully with Kokoro TTS!");
+    } catch (error) {
+      console.error("Audio generation failed:", error);
+      toast.error("Failed to generate audio. Please check your FAL API key and try again.");
+    } finally {
+      setIsGenerating(false);
+    }
   };
   
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-6">Create New Audio</h2>
+      <h2 className="text-2xl font-semibold mb-6">Create New Audio with Kokoro TTS</h2>
+      
+      {showApiKeyInput && (
+        <div className="mb-6 p-4 rounded-md bg-blue-50 border border-blue-200">
+          <div className="flex items-center gap-2 mb-2">
+            <Key size={16} className="text-blue-600" />
+            <h3 className="font-medium text-blue-800">FAL API Key Required</h3>
+          </div>
+          <p className="text-sm text-blue-700 mb-3">
+            Enter your FAL API key to use Kokoro TTS. You can get one from fal.ai
+          </p>
+          <div className="flex gap-2">
+            <Input
+              type="password"
+              placeholder="Enter your FAL API key..."
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              className="flex-1"
+            />
+            <Button onClick={handleSaveApiKey}>Save</Button>
+          </div>
+        </div>
+      )}
+      
+      {!showApiKeyInput && (
+        <div className="mb-4 p-3 rounded-md bg-green-50 border border-green-200">
+          <p className="text-sm text-green-800">
+            ✓ API key configured. Ready to generate audio with Kokoro TTS.
+            <Button 
+              variant="link" 
+              size="sm" 
+              onClick={() => setShowApiKeyInput(true)}
+              className="ml-2 p-0 h-auto text-green-700"
+            >
+              Change key
+            </Button>
+          </p>
+        </div>
+      )}
       
       <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
         <TabsList className="mb-4">
@@ -65,7 +164,7 @@ export default function NewAudioForm({ onAudioGenerated }: NewAudioFormProps) {
               onChange={(e) => setText(e.target.value)}
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Maximum 5000 characters. Current: {text.length} characters.
+              Current: {text.length} characters. Kokoro TTS works best with clear, well-punctuated text.
             </p>
           </div>
         </TabsContent>
@@ -89,16 +188,17 @@ export default function NewAudioForm({ onAudioGenerated }: NewAudioFormProps) {
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         <div>
-          <Label className="text-sm mb-2 block">Voice Selection</Label>
-          <Select value={voice} onValueChange={setVoice}>
+          <Label className="text-sm mb-2 block">Voice Selection (Kokoro TTS)</Label>
+          <Select value={voice} onValueChange={(value: VoiceType) => setVoice(value)}>
             <SelectTrigger>
               <SelectValue placeholder="Select voice" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="roger">Roger (Male, British)</SelectItem>
-              <SelectItem value="sarah">Sarah (Female, American)</SelectItem>
-              <SelectItem value="brian">Brian (Male, American)</SelectItem>
-              <SelectItem value="lily">Lily (Female, British)</SelectItem>
+              {AMERICAN_ENGLISH_VOICES.map((voiceOption) => (
+                <SelectItem key={voiceOption.value} value={voiceOption.value}>
+                  {voiceOption.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -114,37 +214,10 @@ export default function NewAudioForm({ onAudioGenerated }: NewAudioFormProps) {
             className="my-4"
           />
           <div className="flex justify-between text-xs text-muted-foreground">
-            <span>Slow</span>
-            <span>Normal ({speed[0]}x)</span>
-            <span>Fast</span>
+            <span>Slow (0.5x)</span>
+            <span>Current ({speed[0]}x)</span>
+            <span>Fast (2x)</span>
           </div>
-        </div>
-        
-        <div>
-          <Label className="text-sm mb-2 block">Audio Quality</Label>
-          <Select value={quality} onValueChange={setQuality}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select quality" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="standard">Standard</SelectItem>
-              <SelectItem value="high">High</SelectItem>
-              <SelectItem value="premium">Premium</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        
-        <div>
-          <Label className="text-sm mb-2 block">Audio Format</Label>
-          <Select value={format} onValueChange={setFormat}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select format" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="mp3">MP3</SelectItem>
-              <SelectItem value="wav">WAV</SelectItem>
-            </SelectContent>
-          </Select>
         </div>
       </div>
       
@@ -152,10 +225,10 @@ export default function NewAudioForm({ onAudioGenerated }: NewAudioFormProps) {
         <Button 
           size="lg" 
           onClick={handleGenerateAudio}
-          disabled={isGenerating || (text.length < 10 && activeTab === "text")}
+          disabled={isGenerating || (text.length < 10 && activeTab === "text") || showApiKeyInput}
         >
           {isGenerating ? (
-            <>Generating...</>
+            <>Generating with Kokoro TTS...</>
           ) : (
             <>
               <CirclePlay size={18} className="mr-2" /> Generate Audio

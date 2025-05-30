@@ -1,6 +1,6 @@
 
 import { useState } from "react";
-import { Image } from "lucide-react";
+import { Image, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { 
@@ -13,6 +13,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
+import { generateImageWithTogether } from "@/services/imageGenerationService";
 
 interface ImagePromptFormProps {
   onImageGenerated: () => void;
@@ -22,29 +23,65 @@ interface ImagePromptFormProps {
 export function ImagePromptForm({ onImageGenerated, onPromptChange }: ImagePromptFormProps) {
   const [prompt, setPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isEnhancing, setIsEnhancing] = useState(false);
+  const [enhancedPrompt, setEnhancedPrompt] = useState("");
+  const [showEnhancedPrompt, setShowEnhancedPrompt] = useState(false);
   
   const handlePromptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newPrompt = e.target.value;
     setPrompt(newPrompt);
+    // Clear enhanced prompt when user changes the original prompt
+    setEnhancedPrompt("");
+    setShowEnhancedPrompt(false);
     if (onPromptChange) {
       onPromptChange(newPrompt);
     }
   };
   
-  const handleGenerateImage = () => {
+  const handleGenerateImage = async () => {
     if (prompt.length < 10) {
       toast.error("Please enter a more detailed description");
       return;
     }
     
     setIsGenerating(true);
+    setIsEnhancing(true);
     
-    // Simulate API call
-    setTimeout(() => {
-      setIsGenerating(false);
+    try {
+      toast.info("Enhancing your prompt with AI...");
+      console.log("Starting image generation with prompt:", prompt);
+      
+      const imageUrl = await generateImageWithTogether(prompt);
+      
+      // Get the enhanced prompt from global storage and update local state
+      const enhancedPromptData = (window as any).lastEnhancedPrompt;
+      console.log("Retrieved enhanced prompt data:", enhancedPromptData);
+      
+      if (enhancedPromptData && enhancedPromptData.enhanced) {
+        setEnhancedPrompt(enhancedPromptData.enhanced);
+        setShowEnhancedPrompt(true); // Auto-show the enhanced prompt
+        console.log("Set enhanced prompt in state:", enhancedPromptData.enhanced);
+      }
+      
+      setIsEnhancing(false);
+      toast.info("Generating image with Together.AI...");
+      
+      // Store the generated image data globally for the preview component
+      window.lastGeneratedImage = {
+        prompt: enhancedPromptData?.enhanced || prompt,
+        imageUrl,
+        timestamp: new Date().toISOString()
+      };
+      
       onImageGenerated();
-      toast.success("Image generated successfully");
-    }, 2000);
+      toast.success("Image generated successfully with enhanced prompt!");
+    } catch (error) {
+      console.error("Image generation failed:", error);
+      toast.error("Failed to generate image. Please try again.");
+    } finally {
+      setIsGenerating(false);
+      setIsEnhancing(false);
+    }
   };
   
   return (
@@ -59,8 +96,44 @@ export function ImagePromptForm({ onImageGenerated, onPromptChange }: ImagePromp
           onChange={handlePromptChange}
         />
         <p className="text-xs text-muted-foreground">
-          Be specific about details, lighting, atmosphere, and style for better results
+          Your prompt will be enhanced by AI to improve generation results
         </p>
+        
+        {/* Enhanced prompt display */}
+        {enhancedPrompt && (
+          <div className="mt-4 p-4 rounded-md bg-muted border">
+            <div className="flex items-center justify-between mb-2">
+              <Label className="text-sm font-medium text-green-600">✨ AI Enhanced Prompt:</Label>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowEnhancedPrompt(!showEnhancedPrompt)}
+              >
+                {showEnhancedPrompt ? (
+                  <>
+                    <EyeOff size={14} className="mr-1" /> Hide
+                  </>
+                ) : (
+                  <>
+                    <Eye size={14} className="mr-1" /> Show
+                  </>
+                )}
+              </Button>
+            </div>
+            {showEnhancedPrompt && (
+              <div className="space-y-2">
+                <div className="text-xs text-muted-foreground">Your original prompt:</div>
+                <p className="text-sm bg-background p-2 rounded border italic">
+                  "{prompt}"
+                </p>
+                <div className="text-xs text-muted-foreground">Enhanced version used for generation:</div>
+                <p className="text-sm text-foreground leading-relaxed bg-background p-2 rounded border">
+                  {enhancedPrompt}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
@@ -130,8 +203,10 @@ export function ImagePromptForm({ onImageGenerated, onPromptChange }: ImagePromp
           onClick={handleGenerateImage}
           disabled={isGenerating || prompt.length < 10}
         >
-          {isGenerating ? (
-            <>Generating...</>
+          {isEnhancing ? (
+            <>Enhancing prompt with AI...</>
+          ) : isGenerating ? (
+            <>Generating with Together.AI...</>
           ) : (
             <>
               <Image size={18} className="mr-2" /> Generate Image

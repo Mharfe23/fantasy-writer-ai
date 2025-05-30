@@ -46,6 +46,7 @@ export default function MainNavigation({ isMenuOpen, setIsMenuOpen }: MainNaviga
               className="flex items-center gap-4"
             >
               <Link to="/dashboard" className="text-sm font-medium text-foreground/70 hover:text-foreground transition">Dashboard</Link>
+              <Link to="/book" className="text-sm font-medium text-foreground/70 hover:text-foreground transition">Book</Link>
               <Link to="/login" className="text-sm font-medium text-foreground/70 hover:text-foreground transition">Login</Link>
               <Link 
                 to="/signup" 
@@ -80,6 +81,7 @@ export default function MainNavigation({ isMenuOpen, setIsMenuOpen }: MainNaviga
             <a href="#pricing" className="py-2 text-foreground/70 hover:text-foreground transition">Pricing</a>
             <a href="#faq" className="py-2 text-foreground/70 hover:text-foreground transition">FAQ</a>
             <Link to="/dashboard" className="py-2 text-foreground/70 hover:text-foreground transition">Dashboard</Link>
+            <Link to="/book" className="py-2 text-foreground/70 hover:text-foreground transition">Book</Link>
             <div className="flex items-center gap-4 py-2">
               <Link to="/login" className="font-medium text-foreground/70 hover:text-foreground transition">Login</Link>
               <Link 

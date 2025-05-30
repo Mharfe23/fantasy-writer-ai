@@ -9,6 +9,7 @@ import Dashboard from "./pages/Dashboard";
 import Editor from "./pages/Editor";
 import ImageGenerator from "./pages/ImageGenerator";
 import Audio from "./pages/Audio";
+import Book from "./pages/Book";
 import Summaries from "./pages/Summaries";
 import Settings from "./pages/Settings";
 import Login from "./pages/Login";
@@ -28,6 +29,7 @@ const App = () => (
           <Route path="/editor/:id" element={<Editor />} />
           <Route path="/image-generator" element={<ImageGenerator />} />
           <Route path="/audio" element={<Audio />} />
+          <Route path="/book" element={<Book />} />
           <Route path="/summaries" element={<Summaries />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/login" element={<Login />} />
