@@ -16,6 +16,7 @@ public class DataInitializer {
     public CommandLineRunner initData(MongoTemplate mongoTemplate) {
         return args -> {
             // Insert test data for books
+            /*
             Book book1 = new Book(UUID.fromString("550e8400-e29b-41d4-a716-446655440000"), "The Great Adventure", "A thrilling journey through unknown lands.");
             Book book2 = new Book(UUID.fromString("550e8400-e29b-41d4-a716-446655440001"), "Mystery of the Old House", "A mysterious tale of an old house with secrets.");
             mongoTemplate.insertAll(Arrays.asList(book1, book2));
@@ -61,6 +62,8 @@ public class DataInitializer {
             ImagePrompt prompt3 = new ImagePrompt("An old house scene", "/path/to/image3.jpg", page3);
             ImagePrompt prompt4 = new ImagePrompt("A secret passage scene", "/path/to/image4.jpg", page4);
             mongoTemplate.insertAll(Arrays.asList(prompt1, prompt2, prompt3, prompt4));
+       */
         };
+
     }
 } 

@@ -26,8 +26,10 @@ public class BookController {
     }
     
     @GetMapping("/{id}")
-    public ResponseEntity<BookDTO> getBook(@PathVariable String id) {
-        return ResponseEntity.ok(bookService.getBook(id));
+    public ResponseEntity<BookDTO> getBook(
+            @PathVariable String id,
+            @RequestHeader("User-Id") UUID userId) {
+        return ResponseEntity.ok(bookService.getBook(id, userId));
     }
     
     @GetMapping("/user")

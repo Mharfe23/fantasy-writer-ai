@@ -24,10 +24,10 @@ export default function Signup() {
     
     try {
       await authService.register(username, email, password);
-      toast({
-        title: "Account created",
+        toast({
+          title: "Account created",
         description: "Welcome to Fantasy Writer AI! Please log in to continue.",
-      });
+        });
       navigate("/login");
     } catch (error: any) {
       toast({

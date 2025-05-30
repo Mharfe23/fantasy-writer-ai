@@ -29,9 +29,14 @@ public class BookService {
         return bookMapper.toResponseDTO(savedBook);
     }
     
-    public BookDTO getBook(String id) {
+    public BookDTO getBook(String id, UUID userId) {
         Book book = bookRepository.findById(id)
             .orElseThrow(() -> new RuntimeException("Book not found"));
+            
+        if (!book.getUserId().equals(userId)) {
+            throw new RuntimeException("You don't have permission to access this book");
+        }
+        
         return bookMapper.toDTO(book);
     }
     

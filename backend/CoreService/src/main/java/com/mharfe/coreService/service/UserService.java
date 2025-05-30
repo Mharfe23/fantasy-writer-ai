@@ -46,6 +46,11 @@ public class UserService {
         return userRepository.findByUsername(username);
     }
 
+    public User findByUsername(String username) {
+        return userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User not found with username: " + username));
+    }
+
     public Optional<User> getUserByMongoId(String mongoUserId) {
         return userRepository.findByMongoUserId(mongoUserId);
     }

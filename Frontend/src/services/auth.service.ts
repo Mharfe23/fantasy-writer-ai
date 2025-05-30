@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 
 const API_URL = 'http://localhost:8080/api';
 
@@ -39,6 +40,7 @@ class AuthService {
 
   logout(): void {
     localStorage.removeItem('token');
+    window.location.href = '/login';
   }
 
   getCurrentToken(): string | null {
@@ -47,6 +49,25 @@ class AuthService {
 
   isAuthenticated(): boolean {
     return !!this.getCurrentToken();
+  }
+
+  getCurrentUser() {
+    const token = localStorage.getItem('token');
+    if (!token) return null;
+
+    try {
+      const tokenParts = token.split('.');
+      if (tokenParts.length !== 3) return null;
+
+      const payload = JSON.parse(atob(tokenParts[1]));
+      return {
+        username: payload.sub,
+        userId: payload.userId
+      };
+    } catch (error) {
+      console.error('Error parsing token:', error);
+      return null;
+    }
   }
 }
 

@@ -23,10 +23,10 @@ export default function Login() {
     
     try {
       await authService.login(username, password);
-      toast({
-        title: "Login successful",
-        description: "Welcome back to Fantasy Writer AI!",
-      });
+        toast({
+          title: "Login successful",
+          description: "Welcome back to Fantasy Writer AI!",
+        });
       navigate("/dashboard");
     } catch (error: any) {
       e.preventDefault(); // Prevent form submission
