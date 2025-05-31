@@ -1,4 +1,3 @@
-
 import { useState, useRef, useEffect } from "react";
 
 import { motion } from "framer-motion";
@@ -610,7 +609,6 @@ export default function Editor() {
               <div className="bg-card border border-border rounded-lg p-6 h-full flex flex-col">
                 <h3 className="text-lg font-semibold mb-4">Generated Images ({generatedImages.length})</h3>
                 
-
                 {generatedImages.length > 0 ? (
                   <div className="space-y-4 overflow-y-auto">
                     {generatedImages.map((image, index) => (
@@ -630,11 +628,6 @@ export default function Editor() {
                         </div>
                         <div className="text-xs text-muted-foreground mt-2">
                           Generated: {new Date(image.timestamp).toLocaleString()}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
                         </div>
                       </div>
                     ))}

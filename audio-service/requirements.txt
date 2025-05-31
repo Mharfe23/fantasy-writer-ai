@@ -1,0 +1,11 @@
+flask
+werkzeug
+flask-cors
+kokoro>=0.9.4
+soundfile
+minio
+python-dotenv
+torch
+numpy 
+psycopg2
+huggingface_hub[cli]

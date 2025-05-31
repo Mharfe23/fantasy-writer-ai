@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { 
@@ -27,7 +26,7 @@ import {
 } from "@/components/ui/collapsible";
 import DashboardLayout from "@/components/DashboardLayout";
 import NewAudioForm from "@/components/audio/NewAudioForm";
-import { AMERICAN_ENGLISH_VOICES } from "@/services/kokoroTtsService";
+import { useAuth } from "@/hooks/useAuth";
 
 // Dummy data for demonstration
 const audioFiles = [
@@ -36,11 +35,27 @@ const audioFiles = [
   { id: 3, title: "Introduction", project: "Dragons of the North", duration: "5:20", date: "1 week ago", voice: "am_adam" },
 ];
 
+interface GeneratedAudio {
+  prompt: string;
+  voice: string;
+  speed: number;
+  audioUrl: string;
+  audioData: string;
+  timestamp: string;
+}
+
 export default function Audio() {
   const [showGeneratedAudio, setShowGeneratedAudio] = useState(false);
+  const [generatedAudio, setGeneratedAudio] = useState<GeneratedAudio | null>(null);
+  const { user } = useAuth();
   
   const handleAudioGenerated = () => {
     setShowGeneratedAudio(true);
+    // Get the latest generated audio from the global state
+    const lastAudio = (window as any).lastGeneratedAudio;
+    if (lastAudio) {
+      setGeneratedAudio(lastAudio);
+    }
   };
   
   const handleSaveAudio = () => {
@@ -48,13 +63,10 @@ export default function Audio() {
   };
   
   const handleDownloadAudio = () => {
-    // Get the generated audio data from global storage
-    const generatedAudio = (window as any).lastGeneratedAudio;
-    if (generatedAudio && generatedAudio.audioUrl) {
-      // Create download link
+    if (generatedAudio?.audioUrl) {
       const link = document.createElement('a');
       link.href = generatedAudio.audioUrl;
-      link.download = `kokoro-tts-audio-${Date.now()}.wav`;
+      link.download = `audio-${Date.now()}.wav`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -65,8 +77,7 @@ export default function Audio() {
   };
 
   const getVoiceLabel = (voiceValue: string) => {
-    const voice = AMERICAN_ENGLISH_VOICES.find(v => v.value === voiceValue);
-    return voice ? voice.label : voiceValue;
+    return voiceValue;
   };
   
   return (
@@ -80,7 +91,10 @@ export default function Audio() {
           className="lg:col-span-2"
         >
           <div className="bg-card rounded-lg border border-border p-6">
-            <NewAudioForm onAudioGenerated={handleAudioGenerated} />
+            <NewAudioForm 
+              onAudioGenerated={handleAudioGenerated} 
+              userId={user?.id || 'anonymous'}
+            />
             
             {/* Generated audio preview */}
             {showGeneratedAudio && (
@@ -97,7 +111,7 @@ export default function Audio() {
                       <CirclePlay size={24} className="text-primary" />
                     </div>
                     <div>
-                      <p className="font-medium">Kokoro TTS Audio</p>
+                      <p className="font-medium">Generated Audio</p>
                       <p className="text-sm text-muted-foreground">
                         Voice: {(() => {
                           const generatedAudio = (window as any).lastGeneratedAudio;
@@ -111,49 +125,41 @@ export default function Audio() {
                   </div>
                   
                   <div className="bg-background border border-border rounded-md p-3 mb-4">
-                    {(() => {
-                      const generatedAudio = (window as any).lastGeneratedAudio;
-                      if (generatedAudio && generatedAudio.audioUrl) {
-                        return (
-                          <audio 
-                            controls 
-                            className="w-full"
-                            src={generatedAudio.audioUrl}
-                          >
-                            Your browser does not support the audio element.
-                          </audio>
-                        );
-                      }
-                      return (
-                        <div className="flex items-center gap-3">
-                          <Button size="icon" variant="outline" className="h-8 w-8">
-                            <Play size={16} />
-                          </Button>
-                          
-                          <div className="w-full">
-                            <Slider defaultValue={[0]} max={100} step={1} className="my-1" />
-                            <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                              <span>0:00</span>
-                              <span>--:--</span>
-                            </div>
-                          </div>
-                          
-                          <div className="flex items-center gap-2">
-                            <Volume2 size={16} className="text-muted-foreground" />
-                            <Slider defaultValue={[80]} max={100} step={1} className="w-20" />
+                    {generatedAudio && (generatedAudio.audioData || generatedAudio.audioUrl) ? (
+                      <audio 
+                        key={generatedAudio.timestamp}
+                        controls 
+                        className="w-full"
+                        src={generatedAudio.audioData || generatedAudio.audioUrl}
+                      >
+                        Your browser does not support the audio element.
+                      </audio>
+                    ) : (
+                      <div className="flex items-center gap-3">
+                        <Button size="icon" variant="outline" className="h-8 w-8">
+                          <Play size={16} />
+                        </Button>
+                        
+                        <div className="w-full">
+                          <Slider defaultValue={[0]} max={100} step={1} className="my-1" />
+                          <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                            <span>0:00</span>
+                            <span>--:--</span>
                           </div>
                         </div>
-                      );
-                    })()}
+                        
+                        <div className="flex items-center gap-2">
+                          <Volume2 size={16} className="text-muted-foreground" />
+                          <Slider defaultValue={[80]} max={100} step={1} className="w-20" />
+                        </div>
+                      </div>
+                    )}
                   </div>
                   
                   <div className="mt-4 p-4 rounded-md bg-muted">
                     <p className="text-sm font-medium mb-1">Text:</p>
                     <p className="text-sm text-muted-foreground line-clamp-3">
-                      {(() => {
-                        const generatedAudio = (window as any).lastGeneratedAudio;
-                        return generatedAudio ? generatedAudio.prompt : "No text available";
-                      })()}
+                      {generatedAudio?.prompt || "No text available"}
                     </p>
                   </div>
                 </div>

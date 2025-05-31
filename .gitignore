@@ -64,3 +64,9 @@ build/
 
 ### Docker ###
 .docker/
+
+venv/
+
+audio-service/.env
+
+

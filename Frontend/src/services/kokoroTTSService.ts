@@ -1,3 +1,4 @@
+/*
 import { fal } from "@fal-ai/client";
 
 // Configure FAL client - API key should be set by user in the UI
@@ -144,3 +145,4 @@ export const getStoredAudios = (): GeneratedAudio[] => {
     return [];
   }
 };
+*/
