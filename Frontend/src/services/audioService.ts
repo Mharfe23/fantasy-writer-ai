@@ -41,22 +41,45 @@ export interface CustomVoiceResponse {
   createdAt: string;
 }
 
+const getAuthHeader = () => {
+  const token = localStorage.getItem("token");
+  if (!token) {
+    throw new Error("No authentication token found");
+  }
+
+  try {
+    const tokenParts = token.split('.');
+    if (tokenParts.length !== 3) {
+      throw new Error("Invalid token format");
+    }
+
+    const payload = JSON.parse(atob(tokenParts[1]));
+    const userId = payload.userId;
+
+    if (!userId) {
+      throw new Error("No user ID found in token");
+    }
+
+    return {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      "User-Id": userId
+    };
+  } catch (error) {
+    console.error("Error parsing token:", error);
+    throw new Error("Invalid token format");
+  }
+};
+
 export const generateAudio = async (
-  request: AudioGenerationRequest,
-  userId: string
+  request: AudioGenerationRequest
 ): Promise<AudioGenerationResponse> => {
   try {
     const response = await axios.post(
       `${API_BASE_URL}/audio/generate`,
+      request,
       {
-        text: request.text,
-        voice: request.voice,
-        speed: request.speed
-      },
-      {
-        headers: {
-          'User-Id': userId
-        }
+        headers: getAuthHeader()
       }
     );
     return response.data;
@@ -85,9 +108,7 @@ export const createCustomVoice = async (
       `${API_BASE_URL}/audio/create-custom-voice`,
       request,
       {
-        headers: {
-          'User-Id': userId
-        }
+        headers: getAuthHeader()
       }
     );
     return response.data;
@@ -98,26 +119,15 @@ export const createCustomVoice = async (
 };
 
 export const testCustomVoice = async (
-  request: {
-    text: string;
-    voice1: string;
-    voice2: string;
-    weight1: number;
-    weight2: number;
-  }
-): Promise<{ 
-  audioUrl: string;
-  audioData: string;
-  text: string;
-  voice1: string;
-  voice2: string;
-  weight1: number;
-  weight2: number;
-}> => {
+  request: CustomVoiceRequest
+): Promise<AudioGenerationResponse> => {
   try {
     const response = await axios.post(
       `${API_BASE_URL}/audio/test-custom-voice`,
-      request
+      request,
+      {
+        headers: getAuthHeader()
+      }
     );
     return response.data;
   } catch (error) {
