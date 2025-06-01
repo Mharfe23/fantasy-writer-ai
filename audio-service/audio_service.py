@@ -252,16 +252,17 @@ def generate_audio():
         # Generate audio using Kokoro
         try:
             generator = pipeline(text, voice=voice_tensor)
-            audio_data = None
+            audio_chunks = []
             
             for i, (gs, ps, audio) in enumerate(generator):
                 if audio is not None:
-                    audio_data = audio
-                    break
-                    
-            if audio_data is None:
+                    audio_chunks.append(audio)
+            
+            if not audio_chunks:
                 return jsonify({"error": "Failed to generate audio"}), 500
-                
+            
+            # Concatenate all chunks
+            audio_data = np.concatenate(audio_chunks)
         except Exception as e:
             print(f"Error in audio generation: {str(e)}")
             return jsonify({"error": f"Audio generation failed: {str(e)}"}), 500
@@ -486,16 +487,18 @@ def test_custom_voice():
         # Generate audio using the pipeline
         try:
             generator = pipeline(text, voice=blended_voice)
-            audio_data = None
+            audio_chunks = []
             
             for i, (gs, ps, audio) in enumerate(generator):
                 if audio is not None:
-                    audio_data = audio
-                    break
-                    
-            if audio_data is None:
+                    audio_chunks.append(audio)
+            
+            if not audio_chunks:
                 return jsonify({"error": "Failed to generate audio"}), 500
-                
+            
+            # Concatenate all chunks
+            audio_data = np.concatenate(audio_chunks)
+            
             # Save audio data to a temporary file
             temp_filename = f"temp_{uuid.uuid4()}.wav"
             sf.write(temp_filename, audio_data, 24000)
