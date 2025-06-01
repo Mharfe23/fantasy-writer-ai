@@ -1,6 +1,5 @@
-
 import { useState, useEffect } from "react";
-import { CirclePlay, Upload, Key } from "lucide-react";
+import { CirclePlay, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -16,43 +15,65 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { 
-  generateAudioWithKokoro, 
-  saveGeneratedAudio, 
-  AMERICAN_ENGLISH_VOICES,
-  setFalApiKey,
-  getFalApiKey,
-  type VoiceType
-} from "@/services/kokoroTtsService";
+  generateAudio,
+  getAvailableVoices,
+  createCustomVoice,
+  testCustomVoice,
+  getCustomVoices,
+  type AudioGenerationRequest,
+  type CustomVoiceRequest,
+  type CustomVoice
+} from "@/services/audioService";
 
 interface NewAudioFormProps {
   onAudioGenerated: () => void;
+  userId: string;
 }
 
-export default function NewAudioForm({ onAudioGenerated }: NewAudioFormProps) {
+export default function NewAudioForm({ onAudioGenerated, userId }: NewAudioFormProps) {
   const [text, setText] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeTab, setActiveTab] = useState("text");
-  const [voice, setVoice] = useState<VoiceType>("af_heart");
+  const [voice, setVoice] = useState("af_heart");
   const [speed, setSpeed] = useState([1]);
-  const [apiKey, setApiKey] = useState("");
-  const [showApiKeyInput, setShowApiKeyInput] = useState(false);
+  const [availableVoices, setAvailableVoices] = useState<string[]>([]);
+  const [customVoices, setCustomVoices] = useState<CustomVoice[]>([]);
+  const [isLoadingVoices, setIsLoadingVoices] = useState(true);
+  
+  // Custom voice creation state
+  const [showCustomVoiceForm, setShowCustomVoiceForm] = useState(false);
+  const [customVoiceName, setCustomVoiceName] = useState("");
+  const [voice1, setVoice1] = useState("");
+  const [voice2, setVoice2] = useState("");
+  const [weight1, setWeight1] = useState(0.5);
+  const [weight2, setWeight2] = useState(0.5);
+  const [isTestingVoice, setIsTestingVoice] = useState(false);
+  const [testAudioUrl, setTestAudioUrl] = useState<string | null>(null);
   
   useEffect(() => {
-    const storedApiKey = getFalApiKey();
-    if (storedApiKey) {
-      setApiKey(storedApiKey);
-    } else {
-      setShowApiKeyInput(true);
-    }
+    loadVoices();
   }, []);
   
-  const handleSaveApiKey = () => {
-    if (apiKey.trim()) {
-      setFalApiKey(apiKey.trim());
-      setShowApiKeyInput(false);
-      toast.success("API key saved successfully!");
-    } else {
-      toast.error("Please enter a valid API key");
+  const loadVoices = async () => {
+    try {
+      setIsLoadingVoices(true);
+      const [voices, customVoicesList] = await Promise.all([
+        getAvailableVoices(),
+        getCustomVoices()
+      ]);
+      console.log('Custom voices:', customVoicesList); // Debug log
+      setAvailableVoices(voices);
+      setCustomVoices(customVoicesList);
+      if (voices.length > 0) {
+        setVoice(voices[0]);
+        setVoice1(voices[0]);
+        setVoice2(voices[1] || voices[0]);
+      }
+    } catch (error) {
+      console.error("Failed to load voices:", error);
+      toast.error("Failed to load available voices");
+    } finally {
+      setIsLoadingVoices(false);
     }
   };
   
@@ -62,95 +83,104 @@ export default function NewAudioForm({ onAudioGenerated }: NewAudioFormProps) {
       return;
     }
     
-    if (!getFalApiKey()) {
-      toast.error("Please set your FAL API key first");
-      setShowApiKeyInput(true);
-      return;
-    }
-    
     setIsGenerating(true);
     
     try {
-      toast.info("Generating audio with Kokoro TTS...");
+      toast.info("Generating audio...");
       
-      const audioUrl = await generateAudioWithKokoro({
-        prompt: text,
-        voice: voice,
+      const response = await generateAudio({
+        text,
+        voice,
         speed: speed[0]
       });
-      
-      // Save the generated audio
-      const savedAudio = saveGeneratedAudio({
-        prompt: text,
-        voice: voice,
-        speed: speed[0]
-      }, audioUrl);
       
       // Store globally for the preview component
       window.lastGeneratedAudio = {
         prompt: text,
         voice: voice,
         speed: speed[0],
-        audioUrl: audioUrl,
-        timestamp: new Date().toISOString()
+        audioUrl: response.audioUrl,
+        audioData: response.audioData,
+        timestamp: response.timestamp
       };
       
       onAudioGenerated();
-      toast.success("Audio generated successfully with Kokoro TTS!");
+      toast.success("Audio generated successfully!");
     } catch (error) {
       console.error("Audio generation failed:", error);
-      toast.error("Failed to generate audio. Please check your FAL API key and try again.");
+      toast.error("Failed to generate audio. Please try again.");
     } finally {
       setIsGenerating(false);
     }
   };
   
+  const handleTestCustomVoice = async () => {
+    if (!voice1 || !voice2) {
+      toast.error("Please select both voices");
+      return;
+    }
+    
+    setIsTestingVoice(true);
+    
+    try {
+      const response = await testCustomVoice({
+        text: "This is a test of the custom voice blend.",
+        voice1,
+        voice2,
+        weight1,
+        weight2
+      });
+      
+      // Create a data URL from the base64 audio data
+      const audioDataUrl = `data:audio/wav;base64,${response.audioData}`;
+      setTestAudioUrl(audioDataUrl);
+      toast.success("Custom voice test generated!");
+    } catch (error) {
+      console.error("Custom voice test failed:", error);
+      toast.error("Failed to test custom voice");
+    } finally {
+      setIsTestingVoice(false);
+    }
+  };
+  
+  const handleCreateCustomVoice = async () => {
+    if (!customVoiceName || !voice1 || !voice2) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+    
+    try {
+      const response = await createCustomVoice(
+        {
+          voiceName: customVoiceName,
+          voice1,
+          voice2,
+          weight1,
+          weight2
+        },
+        userId
+      );
+      
+      toast.success("Custom voice created successfully!");
+      setShowCustomVoiceForm(false);
+      setCustomVoiceName("");
+      // Refresh available voices
+      await loadVoices();
+    } catch (error) {
+      console.error("Custom voice creation failed:", error);
+      toast.error("Failed to create custom voice");
+    }
+  };
+  
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-6">Create New Audio with Kokoro TTS</h2>
-      
-      {showApiKeyInput && (
-        <div className="mb-6 p-4 rounded-md bg-blue-50 border border-blue-200">
-          <div className="flex items-center gap-2 mb-2">
-            <Key size={16} className="text-blue-600" />
-            <h3 className="font-medium text-blue-800">FAL API Key Required</h3>
-          </div>
-          <p className="text-sm text-blue-700 mb-3">
-            Enter your FAL API key to use Kokoro TTS. You can get one from fal.ai
-          </p>
-          <div className="flex gap-2">
-            <Input
-              type="password"
-              placeholder="Enter your FAL API key..."
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              className="flex-1"
-            />
-            <Button onClick={handleSaveApiKey}>Save</Button>
-          </div>
-        </div>
-      )}
-      
-      {!showApiKeyInput && (
-        <div className="mb-4 p-3 rounded-md bg-green-50 border border-green-200">
-          <p className="text-sm text-green-800">
-            ✓ API key configured. Ready to generate audio with Kokoro TTS.
-            <Button 
-              variant="link" 
-              size="sm" 
-              onClick={() => setShowApiKeyInput(true)}
-              className="ml-2 p-0 h-auto text-green-700"
-            >
-              Change key
-            </Button>
-          </p>
-        </div>
-      )}
+      <h2 className="text-2xl font-semibold mb-6">Create New Audio</h2>
       
       <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
         <TabsList className="mb-4">
           <TabsTrigger value="text">From Text</TabsTrigger>
           <TabsTrigger value="upload">Upload Script</TabsTrigger>
+          <TabsTrigger value="custom">Custom Voice</TabsTrigger>
         </TabsList>
         
         <TabsContent value="text">
@@ -164,7 +194,7 @@ export default function NewAudioForm({ onAudioGenerated }: NewAudioFormProps) {
               onChange={(e) => setText(e.target.value)}
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Current: {text.length} characters. Kokoro TTS works best with clear, well-punctuated text.
+              Current: {text.length} characters. Works best with clear, well-punctuated text.
             </p>
           </div>
         </TabsContent>
@@ -184,58 +214,208 @@ export default function NewAudioForm({ onAudioGenerated }: NewAudioFormProps) {
             </Button>
           </div>
         </TabsContent>
+        
+        <TabsContent value="custom">
+          <div className="space-y-6">
+            <div>
+              <Label className="text-base mb-2 block">Voice Name</Label>
+              <Input
+                placeholder="Enter a name for your custom voice..."
+                value={customVoiceName}
+                onChange={(e) => setCustomVoiceName(e.target.value)}
+              />
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="text-base mb-2 block">First Voice</Label>
+                <Select value={voice1} onValueChange={setVoice1}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select voice" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default" disabled>Default Voices</SelectItem>
+                    {availableVoices.map((voiceOption) => (
+                      <SelectItem key={voiceOption} value={voiceOption}>
+                        {voiceOption}
+                      </SelectItem>
+                    ))}
+                    {customVoices.length > 0 && (
+                      <>
+                        <SelectItem value="custom" disabled>Custom Voices</SelectItem>
+                        {customVoices.map((customVoice) => (
+                          <SelectItem key={customVoice.id} value={customVoice.voice_name}>
+                            {customVoice.voice_name} (Custom)
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div>
+                <Label className="text-base mb-2 block">Second Voice</Label>
+                <Select value={voice2} onValueChange={setVoice2}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select voice" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default" disabled>Default Voices</SelectItem>
+                    {availableVoices.map((voiceOption) => (
+                      <SelectItem key={voiceOption} value={voiceOption}>
+                        {voiceOption}
+                      </SelectItem>
+                    ))}
+                    {customVoices.length > 0 && (
+                      <>
+                        <SelectItem value="custom" disabled>Custom Voices</SelectItem>
+                        {customVoices.map((customVoice) => (
+                          <SelectItem key={customVoice.id} value={customVoice.voice_name}>
+                            {customVoice.voice_name} (Custom)
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            
+            <div>
+              <Label className="text-base mb-2 block">Voice Blend Weights</Label>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm mb-2 block">First Voice Weight</Label>
+                  <Slider
+                    value={[weight1]}
+                    onValueChange={([value]) => {
+                      setWeight1(value);
+                      setWeight2(1 - value);
+                    }}
+                    min={0.1}
+                    max={0.9}
+                    step={0.1}
+                    className="my-4"
+                  />
+                  <p className="text-sm text-muted-foreground">{weight1.toFixed(1)}</p>
+                </div>
+                
+                <div>
+                  <Label className="text-sm mb-2 block">Second Voice Weight</Label>
+                  <Slider
+                    value={[weight2]}
+                    onValueChange={([value]) => {
+                      setWeight2(value);
+                      setWeight1(1 - value);
+                    }}
+                    min={0.1}
+                    max={0.9}
+                    step={0.1}
+                    className="my-4"
+                  />
+                  <p className="text-sm text-muted-foreground">{weight2.toFixed(1)}</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex gap-4">
+              <Button
+                onClick={handleTestCustomVoice}
+                disabled={isTestingVoice || !voice1 || !voice2}
+              >
+                {isTestingVoice ? "Testing..." : "Test Voice Blend"}
+              </Button>
+              
+              <Button
+                onClick={handleCreateCustomVoice}
+                disabled={!customVoiceName || !voice1 || !voice2}
+              >
+                Create Custom Voice
+              </Button>
+            </div>
+            
+            {testAudioUrl && (
+              <div className="mt-4">
+                <Label className="text-base mb-2 block">Test Result</Label>
+                <audio controls className="w-full" src={testAudioUrl}>
+                  Your browser does not support the audio element.
+                </audio>
+              </div>
+            )}
+          </div>
+        </TabsContent>
       </Tabs>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-        <div>
-          <Label className="text-sm mb-2 block">Voice Selection (Kokoro TTS)</Label>
-          <Select value={voice} onValueChange={(value: VoiceType) => setVoice(value)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select voice" />
-            </SelectTrigger>
-            <SelectContent>
-              {AMERICAN_ENGLISH_VOICES.map((voiceOption) => (
-                <SelectItem key={voiceOption.value} value={voiceOption.value}>
-                  {voiceOption.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        
-        <div>
-          <Label className="text-sm mb-2 block">Reading Speed</Label>
-          <Slider
-            value={speed}
-            onValueChange={setSpeed}
-            min={0.5}
-            max={2}
-            step={0.1}
-            className="my-4"
-          />
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>Slow (0.5x)</span>
-            <span>Current ({speed[0]}x)</span>
-            <span>Fast (2x)</span>
+      {activeTab !== "custom" && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <div>
+            <Label className="text-sm mb-2 block">Voice Selection</Label>
+            <Select value={voice} onValueChange={setVoice}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select voice" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableVoices.length > 0 && (
+                  <>
+                    <SelectItem value="default" disabled>Default Voices</SelectItem>
+                    {availableVoices.map((voiceOption) => (
+                      <SelectItem key={voiceOption} value={voiceOption}>
+                        {voiceOption}
+                      </SelectItem>
+                    ))}
+                  </>
+                )}
+                {customVoices.length > 0 && (
+                  <>
+                    <SelectItem value="custom" disabled>Custom Voices</SelectItem>
+                    {customVoices.map((customVoice) => (
+                      <SelectItem key={customVoice.id} value={customVoice.voice_name}>
+                        {customVoice.voice_name} (Custom)
+                      </SelectItem>
+                    ))}
+                  </>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+          
+          <div>
+            <Label className="text-sm mb-2 block">Reading Speed</Label>
+            <Slider
+              value={speed}
+              onValueChange={setSpeed}
+              min={0.5}
+              max={2}
+              step={0.1}
+              className="my-4"
+            />
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>Slow (0.5x)</span>
+              <span>Current ({speed[0]}x)</span>
+              <span>Fast (2x)</span>
+            </div>
           </div>
         </div>
-      </div>
+      )}
       
-      <div className="flex justify-end">
-        <Button 
-          size="lg" 
-          onClick={handleGenerateAudio}
-          disabled={isGenerating || (text.length < 10 && activeTab === "text") || showApiKeyInput}
-        >
-          {isGenerating ? (
-            <>Generating with Kokoro TTS...</>
-          ) : (
-            <>
-              <CirclePlay size={18} className="mr-2" /> Generate Audio
-            </>
-          )}
-        </Button>
-      </div>
+      {activeTab !== "custom" && (
+        <div className="flex justify-end">
+          <Button 
+            size="lg" 
+            onClick={handleGenerateAudio}
+            disabled={isGenerating || (text.length < 10 && activeTab === "text")}
+          >
+            {isGenerating ? (
+              <>Generating...</>
+            ) : (
+              <>
+                <CirclePlay size={18} className="mr-2" /> Generate Audio
+              </>
+            )}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

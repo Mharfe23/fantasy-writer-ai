@@ -1,6 +1,7 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+
 import { motion } from "framer-motion";
-import { Save, Image, CirclePlay, FileText, BookOpen, ArrowDown } from "lucide-react";
+import { Save, Image, CirclePlay, FileText, BookOpen, ArrowDown, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
@@ -14,19 +15,194 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import DashboardLayout from "@/components/DashboardLayout";
+
+import { useParams, useNavigate } from "react-router-dom";
+import bookService, { Book } from "@/services/book.service";
+import pageService, { Page, CreatePageRequest } from "@/services/page.service";
+import imagePromptService, { ImagePrompt, CreateImagePromptRequest } from "@/services/image-prompt.service";
+import chapterService, { Chapter, CreateChapterRequest } from "@/services/chapter.service";
 import { generateImageWithTogether, saveGeneratedImage, getStoredImages, type GeneratedImage } from "@/services/imageGenerationService";
 
+
 export default function Editor() {
-  const [content, setContent] = useState<string>("Once upon a time in a land far away, a young wizard discovered an ancient tome. The pages glowed with an ethereal light, revealing secrets long forgotten.\n\nThe grand castle stood majestically against the twilight sky, its spires reaching for the stars like fingers stretching toward destiny. Dragons circled overhead, their scales shimmering like precious gems in the fading light.");
-  const [title, setTitle] = useState<string>("The Dragon's Quest");
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const [book, setBook] = useState<Book | null>(null);
+  const [content, setContent] = useState<string>("");
+  const [title, setTitle] = useState<string>("");
   const [selectedText, setSelectedText] = useState<string>("");
   const [showImagePreview, setShowImagePreview] = useState<boolean>(false);
   const [selectionStart, setSelectionStart] = useState<number | null>(null);
   const [selectionEnd, setSelectionEnd] = useState<number | null>(null);
+
+  const [isLoading, setIsLoading] = useState(true);
+  const [currentChapter, setCurrentChapter] = useState<string>("");
+  const [currentPage, setCurrentPage] = useState<string>("");
+  const [pages, setPages] = useState<Page[]>([]);
+  const [imagePrompts, setImagePrompts] = useState<ImagePrompt[]>([]);
+  const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [isCreatingChapter, setIsCreatingChapter] = useState(false);
+  const [newChapterTitle, setNewChapterTitle] = useState("");
+  const [isCreatingPage, setIsCreatingPage] = useState(false);
+  const [newPageContent, setNewPageContent] = useState("");
   const [isGeneratingImage, setIsGeneratingImage] = useState<boolean>(false);
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
   const [currentGeneratedImage, setCurrentGeneratedImage] = useState<GeneratedImage | null>(null);
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const loadBook = async () => {
+      if (!id) {
+        toast.error("No book ID provided");
+        navigate("/dashboard");
+        return;
+      }
+
+      try {
+        const bookData = await bookService.getBook(id);
+        setBook(bookData);
+        setTitle(bookData.title);
+        
+        // Load chapters for the book
+        const bookChapters = await chapterService.getChaptersByBook(id);
+        setChapters(bookChapters);
+        
+        // If there are chapters, load the first chapter and its pages
+        if (bookChapters.length > 0) {
+          const firstChapter = bookChapters[0];
+          setCurrentChapter(firstChapter.id);
+          const chapterPages = await pageService.getPagesByChapter(firstChapter.id);
+          setPages(chapterPages);
+          if (chapterPages.length > 0) {
+            setCurrentPage(chapterPages[0].id);
+            setContent(chapterPages[0].textContent);
+            // Load image prompts for the first page
+            const prompts = await imagePromptService.getImagePromptsByPage(chapterPages[0].id);
+            setImagePrompts(prompts);
+          }
+        }
+      } catch (error) {
+        console.error("Error loading book:", error);
+        toast.error("Failed to load book");
+        navigate("/dashboard");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadBook();
+  }, [id, navigate]);
+
+  const handleChapterChange = async (chapterId: string) => {
+    if (chapterId === "newChapter") {
+      setIsCreatingChapter(true);
+      return;
+    }
+
+    setCurrentChapter(chapterId);
+    try {
+      const chapterPages = await pageService.getPagesByChapter(chapterId);
+      setPages(chapterPages);
+      if (chapterPages.length > 0) {
+        setCurrentPage(chapterPages[0].id);
+        setContent(chapterPages[0].textContent);
+      } else {
+        setCurrentPage("");
+        setContent("");
+      }
+    } catch (error) {
+      console.error("Error loading chapter pages:", error);
+      toast.error("Failed to load chapter pages");
+    }
+  };
+
+  const handleCreateChapter = async () => {
+    if (!id || !newChapterTitle.trim()) {
+      toast.error("Please enter a chapter title");
+      return;
+    }
+
+    try {
+      const newChapter: CreateChapterRequest = {
+        title: newChapterTitle.trim(),
+        order: chapters.length + 1,
+        bookId: id
+      };
+
+      const createdChapter = await chapterService.createChapter(newChapter);
+      setChapters([...chapters, createdChapter]);
+      setCurrentChapter(createdChapter.id);
+      setNewChapterTitle("");
+      setIsCreatingChapter(false);
+      toast.success("New chapter created");
+    } catch (error) {
+      console.error("Error creating chapter:", error);
+      toast.error("Failed to create chapter");
+    }
+  };
+
+  const handlePageChange = async (pageId: string) => {
+    if (pageId === "newPage") {
+      if (!currentChapter) {
+        toast.error("Please select a chapter first");
+        return;
+      }
+      setIsCreatingPage(true);
+      return;
+    }
+
+    setCurrentPage(pageId);
+    const selectedPage = pages.find(p => p.id === pageId);
+    if (selectedPage) {
+      setContent(selectedPage.textContent);
+      // Load image prompts for the selected page
+      const prompts = await imagePromptService.getImagePromptsByPage(pageId);
+      setImagePrompts(prompts);
+    }
+  };
+
+  const handleCreatePage = async () => {
+    if (!currentChapter) {
+      toast.error("Please select a chapter first");
+      return;
+    }
+
+    try {
+      const newPage: CreatePageRequest = {
+        textContent: newPageContent.trim(),
+        pageNumber: pages.length + 1,
+        chapterId: currentChapter
+      };
+
+      const createdPage = await pageService.createPage(newPage);
+      setPages([...pages, createdPage]);
+      setCurrentPage(createdPage.id);
+      setContent(createdPage.textContent);
+      setNewPageContent("");
+      setIsCreatingPage(false);
+      setImagePrompts([]);
+      toast.success("New page created");
+    } catch (error) {
+      console.error("Error creating page:", error);
+      toast.error("Failed to create page");
+    }
+  };
+
+  const handleSave = async () => {
+    if (!book || !currentPage) return;
+
+    try {
+      await pageService.updatePage(currentPage, {
+        textContent: content,
+        pageNumber: pages.findIndex(p => p.id === currentPage) + 1
+      });
+      toast.success("Page saved successfully");
+    } catch (error) {
+      console.error("Error saving page:", error);
+      toast.error("Failed to save page");
+    }
+  };
   
   // Load existing generated images on component mount
   useState(() => {
@@ -65,31 +241,64 @@ export default function Editor() {
   };
   
   const handleGenerateImage = async () => {
-    if (!selectedText) {
-      toast.error("Please select text to generate an image");
-      return;
+  if (!selectedText || !currentPage) {
+    toast.error("Please select text to generate an image");
+    return;
+  }
+  
+  setIsGeneratingImage(true);
+  
+  try {
+    toast.info("Generating image from selected text...");
+    const imageUrl = await generateImageWithTogether(selectedText);
+    
+    // Convert the image URL to a blob
+    const response = await fetch(imageUrl);
+    const blob = await response.blob();
+    
+    // Create form data for the upload
+    const formData = new FormData();
+    formData.append('file', blob, 'generated-image.jpg');
+    
+    // Upload to your backend
+    const uploadResponse = await fetch(`${API_URL}/api/images/upload`, {
+      method: 'POST',
+      headers: {
+        ...getAuthHeader(),
+      },
+      body: formData
+    });
+    
+    if (!uploadResponse.ok) {
+      throw new Error('Failed to upload image');
     }
     
-    setIsGeneratingImage(true);
+    const { imagePath } = await uploadResponse.json();
     
-    try {
-      toast.info("Generating image from selected text...");
-      const imageUrl = await generateImageWithTogether(selectedText);
-      
-      // Save the generated image
-      const savedImage = saveGeneratedImage(selectedText, imageUrl);
-      setCurrentGeneratedImage(savedImage);
-      setGeneratedImages(prev => [savedImage, ...prev]);
-      setShowImagePreview(true);
-      
-      toast.success("Image generated successfully!");
-    } catch (error) {
-      console.error("Image generation failed:", error);
-      toast.error("Failed to generate image. Please try again.");
-    } finally {
-      setIsGeneratingImage(false);
-    }
-  };
+    // Create the image prompt with the MinIO path
+    const newPrompt: CreateImagePromptRequest = {
+      selectedText,
+      imagePath,
+      pageId: currentPage
+    };
+    
+    const createdPrompt = await imagePromptService.createImagePrompt(newPrompt);
+    setImagePrompts([...imagePrompts, createdPrompt]);
+    
+    // Also update the local state for immediate display
+    const savedImage = saveGeneratedImage(selectedText, imageUrl);
+    setCurrentGeneratedImage(savedImage);
+    setGeneratedImages(prev => [savedImage, ...prev]);
+    setShowImagePreview(true);
+    
+    toast.success("Image generated and saved successfully!");
+  } catch (error) {
+    console.error("Image generation failed:", error);
+    toast.error("Failed to generate image. Please try again.");
+  } finally {
+    setIsGeneratingImage(false);
+  }
+};
   
   const handleGenerateAudio = () => {
     if (!selectedText && content.length === 0) {
@@ -111,11 +320,6 @@ export default function Editor() {
     toast.success("Generating summary of your content");
   };
   
-  const handleSave = () => {
-    // In a real app, this would save to a database
-    toast.success("Story saved successfully");
-  };
-  
   const handleKeyDown = (e: React.KeyboardEvent) => {
     // Allow keyboard shortcuts for generating content
     if ((e.ctrlKey || e.metaKey) && e.key === 'i' && selectedText) {
@@ -123,6 +327,16 @@ export default function Editor() {
       handleGenerateImage();
     }
   };
+
+  if (isLoading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-full">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
   
   return (
     <DashboardLayout>
@@ -146,15 +360,36 @@ export default function Editor() {
                   />
                 </div>
                 <div className="flex items-center gap-2">
-                  <Select defaultValue="chapter1">
+                  <Select 
+                    value={currentChapter} 
+                    onValueChange={handleChapterChange}
+                  >
                     <SelectTrigger className="w-[180px]">
                       <SelectValue placeholder="Select chapter" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="chapter1">Chapter 1</SelectItem>
-                      <SelectItem value="chapter2">Chapter 2</SelectItem>
-                      <SelectItem value="chapter3">Chapter 3</SelectItem>
+                      {chapters.map((chapter, index) => (
+                        <SelectItem key={chapter.id} value={chapter.id}>
+                          Chapter {index + 1}: {chapter.title}
+                        </SelectItem>
+                      ))}
                       <SelectItem value="newChapter">+ New Chapter</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select 
+                    value={currentPage} 
+                    onValueChange={handlePageChange}
+                  >
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Select page" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {pages.map((page, index) => (
+                        <SelectItem key={page.id} value={page.id}>
+                          Page {index + 1}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="newPage">+ New Page</SelectItem>
                     </SelectContent>
                   </Select>
                   <Button variant="outline" size="sm" onClick={handleSave}>
@@ -163,23 +398,113 @@ export default function Editor() {
                 </div>
               </div>
               
-              <div className="flex space-x-2 mb-4">
-                <Button variant="outline" size="sm">Bold</Button>
-                <Button variant="outline" size="sm">Italic</Button>
-                <Button variant="outline" size="sm">Heading</Button>
-                <Button variant="outline" size="sm">List</Button>
-              </div>
+              {isCreatingChapter && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="mb-4 p-4 border border-primary/30 bg-primary/5 rounded-md"
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <h4 className="text-sm font-medium flex items-center">
+                      <BookOpen size={14} className="mr-1.5 text-primary" /> Create New Chapter
+                    </h4>
+                    <Button 
+                      size="sm" 
+                      variant="ghost"
+                      className="h-6 w-6 p-0"
+                      onClick={() => {
+                        setIsCreatingChapter(false);
+                        setNewChapterTitle("");
+                      }}
+                    >
+                      <ArrowDown size={14} />
+                    </Button>
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Enter chapter title..."
+                      value={newChapterTitle}
+                      onChange={(e) => setNewChapterTitle(e.target.value)}
+                      className="flex-1"
+                    />
+                    <Button 
+                      size="sm"
+                      onClick={handleCreateChapter}
+                      disabled={!newChapterTitle.trim()}
+                    >
+                      <Plus size={14} className="mr-1.5" /> Create
+                    </Button>
+                  </div>
+                </motion.div>
+              )}
               
-              <Textarea
-                ref={textareaRef}
-                placeholder="Start writing your story..."
-                className="flex-1 min-h-[500px] border rounded-md p-4 resize-none focus-visible:ring-1"
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                onMouseUp={handleSelectText}
-                onKeyUp={handleSelectText}
-                onKeyDown={handleKeyDown}
-              />
+              {isCreatingPage && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="mb-4 p-4 border border-primary/30 bg-primary/5 rounded-md"
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <h4 className="text-sm font-medium flex items-center">
+                      <FileText size={14} className="mr-1.5 text-primary" /> Create New Page
+                    </h4>
+                    <Button 
+                      size="sm" 
+                      variant="ghost"
+                      className="h-6 w-6 p-0"
+                      onClick={() => {
+                        setIsCreatingPage(false);
+                        setNewPageContent("");
+                      }}
+                    >
+                      <ArrowDown size={14} />
+                    </Button>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <Textarea
+                      placeholder="Start writing your page content..."
+                      value={newPageContent}
+                      onChange={(e) => setNewPageContent(e.target.value)}
+                      className="min-h-[200px]"
+                    />
+                    <div className="flex justify-end">
+                      <Button 
+                        size="sm"
+                        onClick={handleCreatePage}
+                        disabled={!newPageContent.trim()}
+                      >
+                        <Plus size={14} className="mr-1.5" /> Create Page
+                      </Button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+              
+              {!isCreatingPage && (
+                <>
+                  <div className="flex space-x-2 mb-4">
+                    <Button variant="outline" size="sm">Bold</Button>
+                    <Button variant="outline" size="sm">Italic</Button>
+                    <Button variant="outline" size="sm">Heading</Button>
+                    <Button variant="outline" size="sm">List</Button>
+                  </div>
+                  
+                  <Textarea
+                    ref={textareaRef}
+                    placeholder="Start writing your story..."
+                    className="flex-1 min-h-[500px] border rounded-md p-4 resize-none focus-visible:ring-1"
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    onMouseUp={handleSelectText}
+                    onKeyUp={handleSelectText}
+                    onKeyDown={handleKeyDown}
+                  />
+                </>
+              )}
               
               <div className="flex justify-between items-center mt-4">
                 <div className="text-sm text-muted-foreground">
@@ -190,7 +515,8 @@ export default function Editor() {
                     variant={selectedText ? "default" : "secondary"}
                     size="sm"
                     onClick={handleGenerateImage}
-                    disabled={!selectedText || isGeneratingImage}
+                    disabled={!selectedText || isGeneratingImage || isCreatingPage}
+                    
                     className="relative"
                   >
                     <Image size={16} className="mr-1" /> 
@@ -203,6 +529,7 @@ export default function Editor() {
                     variant="secondary" 
                     size="sm"
                     onClick={handleGenerateAudio}
+                    disabled={isCreatingPage}
                   >
                     <CirclePlay size={16} className="mr-1" /> Generate Audio
                   </Button>
@@ -210,13 +537,14 @@ export default function Editor() {
                     variant="secondary" 
                     size="sm"
                     onClick={handleGenerateSummary}
+                    disabled={isCreatingPage}
                   >
                     <FileText size={16} className="mr-1" /> Generate Summary
                   </Button>
                 </div>
               </div>
               
-              {selectedText && (
+              {selectedText && !isCreatingPage && (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: "auto" }}

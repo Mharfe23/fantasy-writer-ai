@@ -1,6 +1,5 @@
-
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
@@ -9,35 +8,32 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Facebook, Github, Mail } from "lucide-react";
+import { authService } from "@/services/auth.service";
 
 export default function Signup() {
-  const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   const handleEmailSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     
     try {
-      // In a real app, this would connect to your auth provider
-      console.log("Signing up with:", name, email, password);
-      
-      // Simulate signup success
-      setTimeout(() => {
+      await authService.register(username, email, password);
         toast({
           title: "Account created",
-          description: "Welcome to Fantasy Writer AI!",
+        description: "Welcome to Fantasy Writer AI! Please log in to continue.",
         });
-        window.location.href = "/dashboard";
-      }, 1500);
-    } catch (error) {
+      navigate("/login");
+    } catch (error: any) {
       toast({
         variant: "destructive",
         title: "Signup failed",
-        description: "There was a problem creating your account.",
+        description: error.response?.data || "There was a problem creating your account.",
       });
     } finally {
       setIsLoading(false);
@@ -128,13 +124,14 @@ export default function Signup() {
               
               <form onSubmit={handleEmailSignup} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="name">Full Name</Label>
+                  <Label htmlFor="username">Username</Label>
                   <Input 
-                    id="name" 
+                    id="username" 
                     type="text" 
-                    placeholder="John Doe" 
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Choose a username" 
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    autoComplete="username"
                     required
                   />
                 </div>
@@ -146,6 +143,7 @@ export default function Signup() {
                     placeholder="name@example.com" 
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    autoComplete="email"
                     required
                   />
                 </div>
@@ -157,6 +155,7 @@ export default function Signup() {
                     placeholder="Create a strong password" 
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="new-password"
                     required
                   />
                   <p className="text-xs text-muted-foreground">

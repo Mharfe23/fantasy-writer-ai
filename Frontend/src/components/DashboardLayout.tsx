@@ -11,8 +11,20 @@ import {
   CirclePlay, 
   Bell, 
   Cog,
-  Book
+  LogOut,Book
+
 } from "lucide-react";
+import { authService } from "@/services/auth.service";
+import { Button } from "@/components/ui/button";
+import { toast } from "react-toastify";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -21,10 +33,11 @@ interface DashboardLayoutProps {
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const location = useLocation();
+  const currentUser = authService.getCurrentUser();
   
   const navItems = [
     { label: "Dashboard", icon: <LayoutDashboard size={20} />, path: "/dashboard" },
-    { label: "Editor", icon: <BookOpen size={20} />, path: "/editor" },
+    { label: "Editor", icon: <BookOpen size={20} />, path: "/dashboard", onClick: () => toast.info("Please select a book from the dashboard to edit") },
     { label: "Images", icon: <Image size={20} />, path: "/image-generator" },
     { label: "Book", icon: <Book size={20} />, path: "/book" },
     { label: "Audio", icon: <CirclePlay size={20} />, path: "/audio" },
@@ -58,6 +71,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               <li key={item.label}>
                 <Link
                   to={item.path}
+                  onClick={item.onClick}
                   className={`flex items-center px-4 py-3 rounded-lg transition-colors ${
                     location.pathname === item.path 
                       ? 'bg-primary/10 text-primary' 
@@ -124,12 +138,36 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               
               <ThemeToggle />
               
-              <div className="flex items-center space-x-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                 <div className="h-8 w-8 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-white font-medium">
-                  U
+                      {currentUser?.username?.[0]?.toUpperCase() || 'U'}
                 </div>
-                <span className="text-sm font-medium">User</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-56" align="end" forceMount>
+                  <DropdownMenuLabel className="font-normal">
+                    <div className="flex flex-col space-y-1">
+                      <p className="text-sm font-medium leading-none">{currentUser?.username}</p>
+                      <p className="text-xs leading-none text-muted-foreground">
+                        {currentUser?.userId}
+                      </p>
               </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link to="/settings" className="cursor-pointer">
+                      <Cog className="mr-2 h-4 w-4" />
+                      <span>Settings</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => authService.logout()} className="cursor-pointer text-red-600">
+                    <LogOut className="mr-2 h-4 w-4" />
+                    <span>Log out</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </header>
