@@ -14,6 +14,12 @@ from werkzeug.utils import secure_filename
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
+import base64
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Load environment variables from .env file
 load_dotenv()
@@ -25,6 +31,10 @@ CORS(app)
 HF_TOKEN = os.getenv('HUGGINGFACE_TOKEN')
 if not HF_TOKEN:
     print("Warning: HUGGINGFACE_TOKEN environment variable not set")
+
+# Define directories
+VOICES_DIR = os.path.join(os.path.dirname(__file__), 'voices')
+os.makedirs(VOICES_DIR, exist_ok=True)
 
 # MinIO configuration
 minio_client = Minio(
@@ -49,7 +59,7 @@ cors_config = {
 
 # PostgreSQL configuration
 DB_CONFIG = {
-    "dbname": os.getenv('POSTGRES_DB', 'fantasy_db'),
+    "dbname": os.getenv('POSTGRES_DB', 'fantasy_writer_db'),
     "user": os.getenv('POSTGRES_USER', 'postgres'),
     "password": os.getenv('POSTGRES_PASSWORD', 'postgres'),
     "host": os.getenv('POSTGRES_HOST', 'localhost'),
@@ -197,7 +207,6 @@ def generate_audio():
             
             # Read the file and convert to base64
             with open(temp_filename, 'rb') as audio_file:
-                import base64
                 audio_base64 = base64.b64encode(audio_file.read()).decode('utf-8')
             
             # Clean up temporary file
@@ -232,7 +241,11 @@ def get_voices():
 @app.route('/api/audio/create-custom-voice', methods=['POST'])
 def create_custom_voice():
     try:
+        # Validate request data
         data = request.json
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+            
         voice_name = data.get('voiceName')
         voice1 = data.get('voice1')
         voice2 = data.get('voice2')
@@ -240,120 +253,238 @@ def create_custom_voice():
         weight2 = data.get('weight2', 0.5)
         user_id = request.headers.get('User-Id')
         
-        if not all([voice_name, voice1, voice2, user_id]):
-            return jsonify({"error": "Missing required parameters"}), 400
+        # Validate required parameters
+        if not voice_name:
+            return jsonify({"error": "Voice name is required"}), 400
+        if not voice1:
+            return jsonify({"error": "First voice is required"}), 400
+        if not voice2:
+            return jsonify({"error": "Second voice is required"}), 400
+        if not user_id:
+            return jsonify({"error": "User ID is required"}), 400
+            
+        # Validate voice names exist
+        if voice1 not in VOICE_NAMES:
+            return jsonify({"error": f"Voice {voice1} not found"}), 400
+        if voice2 not in VOICE_NAMES:
+            return jsonify({"error": f"Voice {voice2} not found"}), 400
+            
+        # Validate weights
+        if not isinstance(weight1, (int, float)) or not isinstance(weight2, (int, float)):
+            return jsonify({"error": "Weights must be numbers"}), 400
+        if weight1 < 0 or weight1 > 1 or weight2 < 0 or weight2 > 1:
+            return jsonify({"error": "Weights must be between 0 and 1"}), 400
             
         # Get voice tensors
-        v1 = VOICE_TENSORS.get(voice1)
-        v2 = VOICE_TENSORS.get(voice2)
-        
-        if not v1 or not v2:
-            return jsonify({"error": "Invalid voice selection"}), 400
+        try:
+            v1 = VOICE_TENSORS.get(voice1)
+            v2 = VOICE_TENSORS.get(voice2)
+            
+            # Check if tensors exist and are valid
+            if v1 is None:
+                return jsonify({"error": f"Could not load voice tensor for {voice1}"}), 500
+            if v2 is None:
+                return jsonify({"error": f"Could not load voice tensor for {voice2}"}), 500
+        except Exception as e:
+            print(f"Error loading voice tensors: {str(e)}")
+            return jsonify({"error": "Failed to load voice tensors"}), 500
             
         # Create custom voice by blending
-        custom_voice = (v1 * weight1 + v2 * weight2) / (weight1 + weight2)
-        
-        # Save custom voice tensor to MinIO
-        voice_filename = f"{voice_name}_{uuid.uuid4()}.pt"
-        tensor_url, minio_path = save_tensor_to_minio(custom_voice, user_id, voice_filename)
-        
-        # Save to database
-        conn = get_db_connection()
         try:
+            # Ensure weights are tensors on the correct device
+            weight1_tensor = torch.tensor(weight1, device=v1.device)
+            weight2_tensor = torch.tensor(weight2, device=v1.device)
+            
+            # Blend voices with proper tensor operations
+            custom_voice = (v1 * weight1_tensor + v2 * weight2_tensor) / (weight1_tensor + weight2_tensor)
+            
+            # Ensure the result is a valid tensor
+            if not isinstance(custom_voice, torch.Tensor):
+                raise ValueError("Failed to create valid voice tensor")
+                
+        except Exception as e:
+            print(f"Error blending voices: {str(e)}")
+            return jsonify({"error": "Failed to blend voices"}), 500
+            
+        # Save custom voice tensor to MinIO
+        try:
+            voice_filename = f"{voice_name}_{uuid.uuid4()}.pt"
+            tensor_url, minio_path = save_tensor_to_minio(custom_voice, user_id, voice_filename)
+        except Exception as e:
+            print(f"Error saving tensor to MinIO: {str(e)}")
+            return jsonify({"error": "Failed to save custom voice"}), 500
+            
+        # Save to database
+        conn = None
+        try:
+            conn = get_db_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Check if voice name already exists for this user
                 cur.execute("""
-                    INSERT INTO custom_voices (
-                        id, name, voice1, voice2, weight1, weight2,
-                        tensor_url, minio_path, user_id, created_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    SELECT id FROM favorite_voices 
+                    WHERE voice_name = %s AND user_id = %s
+                """, (voice_name, user_id))
+                if cur.fetchone():
+                    return jsonify({"error": "A voice with this name already exists"}), 400
+                    
+                # Insert new custom voice
+                cur.execute("""
+                    INSERT INTO favorite_voices (
+                        id, voice_name, voice_id1, voice_id2, voice_weight1, voice_weight2,
+                        voice_url, user_id
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING *
                 """, (
                     str(uuid.uuid4()),
                     voice_name,
                     voice1,
                     voice2,
-                    weight1,
-                    weight2,
-                    tensor_url,
-                    minio_path,
-                    user_id,
-                    datetime.utcnow()
+                    int(weight1 * 100),  # Convert to integer percentage
+                    int(weight2 * 100),  # Convert to integer percentage
+                    tensor_url,  # This is the MinIO URL from save_tensor_to_minio
+                    user_id
                 ))
                 voice_metadata = cur.fetchone()
                 conn.commit()
+                
+                if not voice_metadata:
+                    raise Exception("Failed to create voice record")
+                    
+                return jsonify(voice_metadata)
+                
+        except psycopg2.Error as e:
+            print(f"Database error: {str(e)}")
+            if conn:
+                conn.rollback()
+            return jsonify({"error": "Database error occurred"}), 500
+        except Exception as e:
+            print(f"Error saving to database: {str(e)}")
+            if conn:
+                conn.rollback()
+            return jsonify({"error": "Failed to save voice metadata"}), 500
         finally:
-            conn.close()
-        
-        return jsonify(voice_metadata)
-        
+            if conn:
+                conn.close()
+                
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        print(f"Unexpected error in create_custom_voice: {str(e)}")
+        return jsonify({"error": "An unexpected error occurred"}), 500
 
 @app.route('/api/audio/test-custom-voice', methods=['POST'])
 def test_custom_voice():
     try:
-        data = request.json
-        text = data.get('text', "This is a test of the custom voice.")
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+            
+        text = data.get('text')
         voice1 = data.get('voice1')
         voice2 = data.get('voice2')
-        weight1 = data.get('weight1', 0.5)
-        weight2 = data.get('weight2', 0.5)
+        weight1 = data.get('weight1')
+        weight2 = data.get('weight2')
+        user_id = request.headers.get('User-Id')
         
-        if not all([voice1, voice2]):
+        if not all([text, voice1, voice2, weight1, weight2, user_id]):
             return jsonify({"error": "Missing required parameters"}), 400
             
-        # Get voice tensors
-        v1 = VOICE_TENSORS.get(voice1)
-        v2 = VOICE_TENSORS.get(voice2)
+        # Load voice tensors
+        voice1_path = os.path.join(VOICES_DIR, f"{voice1}.pt")
+        voice2_path = os.path.join(VOICES_DIR, f"{voice2}.pt")
         
-        if not v1 or not v2:
-            return jsonify({"error": "Invalid voice selection"}), 400
+        if not os.path.exists(voice1_path) or not os.path.exists(voice2_path):
+            return jsonify({"error": "One or both voice tensors not found"}), 404
             
-        # Create temporary custom voice
-        custom_voice = (v1 * weight1 + v2 * weight2) / (weight1 + weight2)
+        voice1_tensor = torch.load(voice1_path)
+        voice2_tensor = torch.load(voice2_path)
         
-        # Generate test audio
-        generator = pipeline(text, voice=custom_voice)
-        audio_data = None
-        
-        for i, (gs, ps, audio) in enumerate(generator):
-            audio_data = audio
-            break
+        # Validate tensors
+        if voice1_tensor is None or voice2_tensor is None:
+            return jsonify({"error": "Invalid voice tensors"}), 400
             
-        if not audio_data:
-            return jsonify({"error": "Failed to generate audio"}), 500
-            
-        # Save to MinIO and get URL
-        url, _ = save_audio_to_minio(audio_data, "test", prefix="test")
+        # Ensure tensors are on the same device
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        voice1_tensor = voice1_tensor.to(device)
+        voice2_tensor = voice2_tensor.to(device)
         
-        # Convert audio data to base64 for direct playback
+        # Blend voices
+        blended_voice = (weight1 * voice1_tensor + weight2 * voice2_tensor) / (weight1 + weight2)
+        
+        # Generate audio using the pipeline
         try:
+            generator = pipeline(text, voice=blended_voice)
+            audio_data = None
+            
+            for i, (gs, ps, audio) in enumerate(generator):
+                if audio is not None:
+                    audio_data = audio
+                    break
+                    
+            if audio_data is None:
+                return jsonify({"error": "Failed to generate audio"}), 500
+                
             # Save audio data to a temporary file
             temp_filename = f"temp_{uuid.uuid4()}.wav"
             sf.write(temp_filename, audio_data, 24000)
             
             # Read the file and convert to base64
             with open(temp_filename, 'rb') as audio_file:
-                import base64
                 audio_base64 = base64.b64encode(audio_file.read()).decode('utf-8')
             
             # Clean up temporary file
             os.remove(temp_filename)
+            
+            return jsonify({
+                "audioData": audio_base64,
+                "timestamp": datetime.now().isoformat()
+            })
+            
         except Exception as e:
-            print(f"Error converting audio to base64: {str(e)}")
-            return jsonify({"error": f"Failed to process audio: {str(e)}"}), 500
-        
-        return jsonify({
-            "audioUrl": url,
-            "audioData": f"data:audio/wav;base64,{audio_base64}",
-            "text": text,
-            "voice1": voice1,
-            "voice2": voice2,
-            "weight1": weight1,
-            "weight2": weight2
-        })
+            logger.error(f"Error generating audio: {str(e)}")
+            return jsonify({"error": f"Failed to generate audio: {str(e)}"}), 500
         
     except Exception as e:
+        logger.error(f"Error in test-custom-voice: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/audio/custom-voices', methods=['GET'])
+def get_custom_voices():
+    try:
+        user_id = request.headers.get('User-Id')
+        
+        if not user_id:
+            return jsonify({"error": "User ID is required"}), 400
+            
+        conn = None
+        try:
+            conn = get_db_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT 
+                        id,
+                        voice_name,
+                        voice_id1,
+                        voice_id2,
+                        voice_weight1,
+                        voice_weight2,
+                        voice_url,
+                        user_id
+                    FROM favorite_voices 
+                    WHERE user_id = %s
+                    ORDER BY voice_name
+                """, (user_id,))
+                voices = cur.fetchall()
+                
+                return jsonify([dict(voice) for voice in voices])
+                
+        except psycopg2.Error as e:
+            print(f"Database error: {str(e)}")
+            return jsonify({"error": "Database error occurred"}), 500
+        finally:
+            if conn:
+                conn.close()
+                
+    except Exception as e:
+        print(f"Unexpected error in get_custom_voices: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':

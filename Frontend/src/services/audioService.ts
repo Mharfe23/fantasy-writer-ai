@@ -9,19 +9,20 @@ export interface AudioGenerationRequest {
 }
 
 export interface AudioGenerationResponse {
-  id: string;
-  prompt: string;
-  voice: string;
-  speed: number;
-  audioUrl: string;
+  id?: string;
+  prompt?: string;
+  voice?: string;
+  speed?: number;
+  audioUrl?: string;
   audioData: string;  // Base64 encoded audio data
   timestamp: string;
-  minioPath: string;
-  userId: string;
+  minioPath?: string;
+  userId?: string;
 }
 
 export interface CustomVoiceRequest {
-  voiceName: string;
+  voiceName?: string;  // Optional for testing
+  text?: string;
   voice1: string;
   voice2: string;
   weight1: number;
@@ -39,6 +40,17 @@ export interface CustomVoiceResponse {
   minioPath: string;
   userId: string;
   createdAt: string;
+}
+
+export interface CustomVoice {
+  id: string;
+  voiceName: string;
+  voiceId1: string;
+  voiceId2: string;
+  voiceWeight1: number;
+  voiceWeight2: number;
+  voiceUrl: string;
+  userId: string;
 }
 
 const getAuthHeader = () => {
@@ -100,8 +112,7 @@ export const getAvailableVoices = async (): Promise<string[]> => {
 };
 
 export const createCustomVoice = async (
-  request: CustomVoiceRequest,
-  userId: string
+  request: CustomVoiceRequest
 ): Promise<CustomVoiceResponse> => {
   try {
     const response = await axios.post(
@@ -133,5 +144,20 @@ export const testCustomVoice = async (
   } catch (error) {
     console.error('Error testing custom voice:', error);
     throw new Error('Failed to test custom voice');
+  }
+};
+
+export const getCustomVoices = async (): Promise<CustomVoice[]> => {
+  try {
+    const response = await axios.get(
+      `${API_BASE_URL}/audio/custom-voices`,
+      {
+        headers: getAuthHeader()
+      }
+    );
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching custom voices:', error);
+    throw new Error('Failed to fetch custom voices');
   }
 }; 

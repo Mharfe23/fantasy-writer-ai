@@ -125,7 +125,9 @@ export default function NewAudioForm({ onAudioGenerated, userId }: NewAudioFormP
         weight2
       });
       
-      setTestAudioUrl(response.audioUrl);
+      // Create a data URL from the base64 audio data
+      const audioDataUrl = `data:audio/wav;base64,${response.audioData}`;
+      setTestAudioUrl(audioDataUrl);
       toast.success("Custom voice test generated!");
     } catch (error) {
       console.error("Custom voice test failed:", error);
@@ -263,8 +265,8 @@ export default function NewAudioForm({ onAudioGenerated, userId }: NewAudioFormP
                       setWeight1(value);
                       setWeight2(1 - value);
                     }}
-                    min={0}
-                    max={1}
+                    min={0.1}
+                    max={0.9}
                     step={0.1}
                     className="my-4"
                   />
@@ -279,8 +281,8 @@ export default function NewAudioForm({ onAudioGenerated, userId }: NewAudioFormP
                       setWeight2(value);
                       setWeight1(1 - value);
                     }}
-                    min={0}
-                    max={1}
+                    min={0.1}
+                    max={0.9}
                     step={0.1}
                     className="my-4"
                   />

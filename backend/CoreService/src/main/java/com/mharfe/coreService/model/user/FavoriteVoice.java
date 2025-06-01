@@ -15,7 +15,7 @@ public class FavoriteVoice {
     @Column(name = "voice_name", nullable = false)
     private String voiceName;
 
-    @Column(name = "voice_url", nullable = false)
+    @Column(name = "voice_url", nullable = false, length = 1000)
     private String voiceUrl;
 
     @Column(name = "voice_id1", nullable = false)
