@@ -16,6 +16,7 @@ from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 import base64
 import logging
+from urllib.parse import urlparse
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -171,21 +172,94 @@ def generate_audio():
             
         print(f"Generating audio with voice: {voice}, speed: {speed}")
         
+        # Check if it's a custom voice
+        conn = None
+        try:
+            conn = get_db_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT voice_url FROM favorite_voices 
+                    WHERE voice_name = %s AND user_id = %s
+                """, (voice, user_id))
+                voice_data = cur.fetchone()
+                
+                if voice_data:
+                    # It's a custom voice, load from MinIO
+                    try:
+                        # Extract bucket and object name from the URL
+                        voice_url = voice_data['voice_url']
+                        if not voice_url:
+                            return jsonify({
+                                "error": "Voice URL is missing",
+                                "details": "The voice tensor might have been deleted from storage"
+                            }), 404
+                            
+                        # The URL format is like: http://localhost:9000/fantasy-audio/voice/user_id/filename.pt
+                        try:
+                            # Parse the URL to get the path
+                            parsed_url = urlparse(voice_url)
+                            path_parts = parsed_url.path.strip('/').split('/')
+                            
+                            # Remove the bucket name from the path
+                            if path_parts[0] == BUCKET_NAME:
+                                path_parts = path_parts[1:]
+                            
+                            # Join the remaining parts to get the object name
+                            object_name = '/'.join(path_parts)
+                            
+                            # Download the tensor
+                            try:
+                                response = minio_client.get_object(BUCKET_NAME, object_name)
+                                # Read the response data into a BytesIO buffer
+                                buffer = io.BytesIO(response.read())
+                                voice_tensor = torch.load(buffer)
+                            except Exception as e:
+                                return jsonify({
+                                    "error": "Failed to load voice tensor",
+                                    "details": f"The voice tensor could not be loaded: {str(e)}"
+                                }), 500
+                                
+                        except Exception as e:
+                            print(f"Error parsing voice URL: {str(e)}")
+                            return jsonify({
+                                "error": "Invalid voice URL format",
+                                "details": "The voice URL is malformed"
+                            }), 500
+                    except Exception as e:
+                        print(f"Error downloading tensor from MinIO: {str(e)}")
+                        return jsonify({
+                            "error": "Failed to access voice storage",
+                            "details": "Could not access the voice tensor storage"
+                        }), 500
+                else:
+                    # It's a default voice
+                    if voice not in VOICE_NAMES:
+                        return jsonify({"error": f"Voice {voice} not found"}), 400
+                    voice_tensor = VOICE_TENSORS.get(voice)
+                    if voice_tensor is None:
+                        return jsonify({"error": f"Could not load voice tensor for {voice}"}), 500
+                        
+        except psycopg2.Error as e:
+            print(f"Database error: {str(e)}")
+            return jsonify({
+                "error": "Database error occurred",
+                "details": "Could not access the voice database"
+            }), 500
+        finally:
+            if conn:
+                conn.close()
+                
         # Generate audio using Kokoro
         try:
-            # Check if voice exists in available voices
-            if voice not in VOICE_NAMES:
-                return jsonify({"error": f"Voice {voice} not found"}), 400
-                
-            generator = pipeline(text, voice=voice)
+            generator = pipeline(text, voice=voice_tensor)
             audio_data = None
             
             for i, (gs, ps, audio) in enumerate(generator):
-                if audio is not None:  # Check if audio is not None instead of using it as a boolean
+                if audio is not None:
                     audio_data = audio
-                    break  # We only need the first audio segment
-                
-            if audio_data is None:  # Check if audio_data is None instead of using it as a boolean
+                    break
+                    
+            if audio_data is None:
                 return jsonify({"error": "Failed to generate audio"}), 500
                 
         except Exception as e:
@@ -221,8 +295,8 @@ def generate_audio():
             "prompt": text,
             "voice": voice,
             "speed": speed,
-            "audioUrl": url,  # MinIO URL for storage
-            "audioData": f"data:audio/wav;base64,{audio_base64}",  # Direct audio data for immediate playback
+            "audioUrl": url,
+            "audioData": f"data:audio/wav;base64,{audio_base64}",
             "timestamp": datetime.utcnow().isoformat(),
             "minioPath": minio_path,
             "userId": user_id
@@ -473,6 +547,9 @@ def get_custom_voices():
                     ORDER BY voice_name
                 """, (user_id,))
                 voices = cur.fetchall()
+                
+                # Debug log
+                print("Found custom voices:", [dict(voice) for voice in voices])
                 
                 return jsonify([dict(voice) for voice in voices])
                 

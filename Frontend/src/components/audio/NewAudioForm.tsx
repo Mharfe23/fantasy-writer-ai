@@ -19,8 +19,10 @@ import {
   getAvailableVoices,
   createCustomVoice,
   testCustomVoice,
+  getCustomVoices,
   type AudioGenerationRequest,
-  type CustomVoiceRequest
+  type CustomVoiceRequest,
+  type CustomVoice
 } from "@/services/audioService";
 
 interface NewAudioFormProps {
@@ -35,6 +37,7 @@ export default function NewAudioForm({ onAudioGenerated, userId }: NewAudioFormP
   const [voice, setVoice] = useState("af_heart");
   const [speed, setSpeed] = useState([1]);
   const [availableVoices, setAvailableVoices] = useState<string[]>([]);
+  const [customVoices, setCustomVoices] = useState<CustomVoice[]>([]);
   const [isLoadingVoices, setIsLoadingVoices] = useState(true);
   
   // Custom voice creation state
@@ -54,14 +57,20 @@ export default function NewAudioForm({ onAudioGenerated, userId }: NewAudioFormP
   const loadVoices = async () => {
     try {
       setIsLoadingVoices(true);
-      const voices = await getAvailableVoices();
+      const [voices, customVoicesList] = await Promise.all([
+        getAvailableVoices(),
+        getCustomVoices()
+      ]);
+      console.log('Custom voices:', customVoicesList); // Debug log
       setAvailableVoices(voices);
+      setCustomVoices(customVoicesList);
       if (voices.length > 0) {
         setVoice(voices[0]);
         setVoice1(voices[0]);
         setVoice2(voices[1] || voices[0]);
       }
     } catch (error) {
+      console.error("Failed to load voices:", error);
       toast.error("Failed to load available voices");
     } finally {
       setIsLoadingVoices(false);
@@ -79,22 +88,19 @@ export default function NewAudioForm({ onAudioGenerated, userId }: NewAudioFormP
     try {
       toast.info("Generating audio...");
       
-      const response = await generateAudio(
-        {
-          text,
-          voice,
-          speed: speed[0]
-        },
-        userId
-      );
+      const response = await generateAudio({
+        text,
+        voice,
+        speed: speed[0]
+      });
       
       // Store globally for the preview component
       window.lastGeneratedAudio = {
         prompt: text,
         voice: voice,
         speed: speed[0],
-        audioUrl: response.audioUrl,  // Keep MinIO URL for storage
-        audioData: response.audioData,  // Add direct audio data for immediate playback
+        audioUrl: response.audioUrl,
+        audioData: response.audioData,
         timestamp: response.timestamp
       };
       
@@ -228,11 +234,22 @@ export default function NewAudioForm({ onAudioGenerated, userId }: NewAudioFormP
                     <SelectValue placeholder="Select voice" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="default" disabled>Default Voices</SelectItem>
                     {availableVoices.map((voiceOption) => (
                       <SelectItem key={voiceOption} value={voiceOption}>
                         {voiceOption}
                       </SelectItem>
                     ))}
+                    {customVoices.length > 0 && (
+                      <>
+                        <SelectItem value="custom" disabled>Custom Voices</SelectItem>
+                        {customVoices.map((customVoice) => (
+                          <SelectItem key={customVoice.id} value={customVoice.voice_name}>
+                            {customVoice.voice_name} (Custom)
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -244,11 +261,22 @@ export default function NewAudioForm({ onAudioGenerated, userId }: NewAudioFormP
                     <SelectValue placeholder="Select voice" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="default" disabled>Default Voices</SelectItem>
                     {availableVoices.map((voiceOption) => (
                       <SelectItem key={voiceOption} value={voiceOption}>
                         {voiceOption}
                       </SelectItem>
                     ))}
+                    {customVoices.length > 0 && (
+                      <>
+                        <SelectItem value="custom" disabled>Custom Voices</SelectItem>
+                        {customVoices.map((customVoice) => (
+                          <SelectItem key={customVoice.id} value={customVoice.voice_name}>
+                            {customVoice.voice_name} (Custom)
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -328,11 +356,26 @@ export default function NewAudioForm({ onAudioGenerated, userId }: NewAudioFormP
                 <SelectValue placeholder="Select voice" />
               </SelectTrigger>
               <SelectContent>
-                {availableVoices.map((voiceOption) => (
-                  <SelectItem key={voiceOption} value={voiceOption}>
-                    {voiceOption}
-                  </SelectItem>
-                ))}
+                {availableVoices.length > 0 && (
+                  <>
+                    <SelectItem value="default" disabled>Default Voices</SelectItem>
+                    {availableVoices.map((voiceOption) => (
+                      <SelectItem key={voiceOption} value={voiceOption}>
+                        {voiceOption}
+                      </SelectItem>
+                    ))}
+                  </>
+                )}
+                {customVoices.length > 0 && (
+                  <>
+                    <SelectItem value="custom" disabled>Custom Voices</SelectItem>
+                    {customVoices.map((customVoice) => (
+                      <SelectItem key={customVoice.id} value={customVoice.voice_name}>
+                        {customVoice.voice_name} (Custom)
+                      </SelectItem>
+                    ))}
+                  </>
+                )}
               </SelectContent>
             </Select>
           </div>

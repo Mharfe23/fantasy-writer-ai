@@ -44,13 +44,13 @@ export interface CustomVoiceResponse {
 
 export interface CustomVoice {
   id: string;
-  voiceName: string;
-  voiceId1: string;
-  voiceId2: string;
-  voiceWeight1: number;
-  voiceWeight2: number;
-  voiceUrl: string;
-  userId: string;
+  voice_name: string;
+  voice_id1: string;
+  voice_id2: string;
+  voice_weight1: number;
+  voice_weight2: number;
+  voice_url: string;
+  user_id: string;
 }
 
 const getAuthHeader = () => {
