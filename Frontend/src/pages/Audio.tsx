@@ -126,33 +126,33 @@ export default function Audio() {
                   
                   <div className="bg-background border border-border rounded-md p-3 mb-4">
                     {generatedAudio && (generatedAudio.audioData || generatedAudio.audioUrl) ? (
-                      <audio 
+                          <audio 
                         key={generatedAudio.timestamp}
-                        controls 
-                        className="w-full"
+                            controls 
+                            className="w-full"
                         src={generatedAudio.audioData || generatedAudio.audioUrl}
-                      >
-                        Your browser does not support the audio element.
-                      </audio>
+                          >
+                            Your browser does not support the audio element.
+                          </audio>
                     ) : (
-                      <div className="flex items-center gap-3">
-                        <Button size="icon" variant="outline" className="h-8 w-8">
-                          <Play size={16} />
-                        </Button>
-                        
-                        <div className="w-full">
-                          <Slider defaultValue={[0]} max={100} step={1} className="my-1" />
-                          <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                            <span>0:00</span>
-                            <span>--:--</span>
+                        <div className="flex items-center gap-3">
+                          <Button size="icon" variant="outline" className="h-8 w-8">
+                            <Play size={16} />
+                          </Button>
+                          
+                          <div className="w-full">
+                            <Slider defaultValue={[0]} max={100} step={1} className="my-1" />
+                            <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                              <span>0:00</span>
+                              <span>--:--</span>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-2">
+                            <Volume2 size={16} className="text-muted-foreground" />
+                            <Slider defaultValue={[80]} max={100} step={1} className="w-20" />
                           </div>
                         </div>
-                        
-                        <div className="flex items-center gap-2">
-                          <Volume2 size={16} className="text-muted-foreground" />
-                          <Slider defaultValue={[80]} max={100} step={1} className="w-20" />
-                        </div>
-                      </div>
                     )}
                   </div>
                   

@@ -348,14 +348,14 @@ export default function NewAudioForm({ onAudioGenerated, userId }: NewAudioFormP
       </Tabs>
       
       {activeTab !== "custom" && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <div>
             <Label className="text-sm mb-2 block">Voice Selection</Label>
             <Select value={voice} onValueChange={setVoice}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select voice" />
-              </SelectTrigger>
-              <SelectContent>
+            <SelectTrigger>
+              <SelectValue placeholder="Select voice" />
+            </SelectTrigger>
+            <SelectContent>
                 {availableVoices.length > 0 && (
                   <>
                     <SelectItem value="default" disabled>Default Voices</SelectItem>
@@ -372,49 +372,49 @@ export default function NewAudioForm({ onAudioGenerated, userId }: NewAudioFormP
                     {customVoices.map((customVoice) => (
                       <SelectItem key={customVoice.id} value={customVoice.voice_name}>
                         {customVoice.voice_name} (Custom)
-                      </SelectItem>
-                    ))}
+                </SelectItem>
+              ))}
                   </>
                 )}
-              </SelectContent>
-            </Select>
-          </div>
-          
-          <div>
-            <Label className="text-sm mb-2 block">Reading Speed</Label>
-            <Slider
-              value={speed}
-              onValueChange={setSpeed}
-              min={0.5}
-              max={2}
-              step={0.1}
-              className="my-4"
-            />
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>Slow (0.5x)</span>
-              <span>Current ({speed[0]}x)</span>
-              <span>Fast (2x)</span>
-            </div>
+            </SelectContent>
+          </Select>
+        </div>
+        
+        <div>
+          <Label className="text-sm mb-2 block">Reading Speed</Label>
+          <Slider
+            value={speed}
+            onValueChange={setSpeed}
+            min={0.5}
+            max={2}
+            step={0.1}
+            className="my-4"
+          />
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>Slow (0.5x)</span>
+            <span>Current ({speed[0]}x)</span>
+            <span>Fast (2x)</span>
           </div>
         </div>
+      </div>
       )}
       
       {activeTab !== "custom" && (
-        <div className="flex justify-end">
-          <Button 
-            size="lg" 
-            onClick={handleGenerateAudio}
+      <div className="flex justify-end">
+        <Button 
+          size="lg" 
+          onClick={handleGenerateAudio}
             disabled={isGenerating || (text.length < 10 && activeTab === "text")}
-          >
-            {isGenerating ? (
+        >
+          {isGenerating ? (
               <>Generating...</>
-            ) : (
-              <>
-                <CirclePlay size={18} className="mr-2" /> Generate Audio
-              </>
-            )}
-          </Button>
-        </div>
+          ) : (
+            <>
+              <CirclePlay size={18} className="mr-2" /> Generate Audio
+            </>
+          )}
+        </Button>
+      </div>
       )}
     </div>
   );

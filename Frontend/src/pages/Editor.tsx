@@ -608,7 +608,7 @@ export default function Editor() {
             <TabsContent value="images" className="min-h-[600px]">
               <div className="bg-card border border-border rounded-lg p-6 h-full flex flex-col">
                 <h3 className="text-lg font-semibold mb-4">Generated Images ({generatedImages.length})</h3>
-                
+
                 {generatedImages.length > 0 ? (
                   <div className="space-y-4 overflow-y-auto">
                     {generatedImages.map((image, index) => (
