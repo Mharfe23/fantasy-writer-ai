@@ -1,102 +1,201 @@
 # Fantasy Writer AI
 
-An AI-powered writing platform designed for fantasy authors. It offers an immersive writing experience where users can generate images, create audio narration, and summarize chapters — all powered by intelligent services and managed through a scalable, containerized microservices architecture.
+An AI-powered writing platform designed for fantasy authors, combining modern web technologies with AI services to create an immersive writing experience. The platform enables authors to generate images, create audio narration, and get AI-powered summaries of their work.
 
-## Project Structure
+## 🏗️ Project Architecture
+
+The project follows a microservices architecture with the following key components:
 
 ```
 fantasy-writer-ai/
-├── backend/           # Spring Boot backend application
-├── frontend/         # Frontend application (to be implemented)
-└── monitoring/       # Monitoring and logging infrastructure
+├── backend/           # Spring Boot backend services
+│   └── CoreService/   # Main backend service with business logic
+├── Frontend/         # React + TypeScript frontend application
+├── audio-service/    # Python-based text-to-speech service
+└── Scraping/        # Data collection and processing utilities
 ```
 
-## 🧱 Architecture Overview
+## 🧠 Core Logic & Architecture
 
-- 🧩 **Microservices** using Spring Boot
-- 🐳 **Dockerized** services
-- ☸️ **Kubernetes** for orchestration
-- 🔧 **Jenkins** for CI/CD pipelines
-- 📊 **Prometheus + Grafana** for monitoring and metrics
-- 🔐 **JWT Authentication** with role-based access (Writer, Editor, Admin)
-- 💳 **Token & Payment System** for AI feature access
+### 1. Data Model & Storage
+- **User Management (PostgreSQL)**
+  - User authentication and authorization
+  - Token balance tracking
+  - Payment transaction history
+  - Role-based access control
 
-## 🔍 Features
+- **Content Management (MongoDB)**
+  - Books: Main container for fantasy stories
+  - Chapters: Organized sections within books
+  - Pages: Individual content units with text
+  - Image Prompts: AI-generated image descriptions
 
-| Feature               | Description                                                  |
-|-----------------------|--------------------------------------------------------------|
-| ✍️ Story Editor         | Interface for writing and organizing fantasy chapters       |
-| 🖼️ AI Image Generator   | Select text and generate scene-matching images             |
-| 🎧 Audio Narration     | Convert written chapters into voice-based audio books        |
-| 🧠 AI Summary Generator | Get structured summaries for chapters and story arcs        |
-| 🪙 Token System        | Track usage of AI services via token-based access           |
-| 💳 Payments            | Recharge tokens through an integrated payment gateway        |
-| 🧑‍💻 User Roles         | Writer, Editor, Admin (extensible architecture)             |
+### 2. Service Layer Architecture
+- **Book Management**
+  - CRUD operations for books
+  - Chapter organization
+  - Page management
+  - Ownership verification
 
-## 🧰 Tech Stack
+- **User Services**
+  - Authentication with JWT
+  - Token management
+  - Payment processing
+  - Usage tracking
 
-| Layer            | Tools & Frameworks                                           |
-|------------------|--------------------------------------------------------------|
-| Backend          | Java 21, Spring Boot (REST APIs)                             |
-| Frontend         | React, TypeScript (to be implemented)                        |
-| Containerization | Docker                                                       |
-| Orchestration    | Kubernetes (Helm optional)                                   |
-| CI/CD            | Jenkins                                                      |
-| Monitoring       | Prometheus, Grafana                                          |
-| AI Processing    | Python (TTS, Image Gen), Flask (behind gateway)              |
-| API Gateway      | Spring Cloud Gateway / Istio (optional)                      |
-| Auth             | Spring Security + JWT                                        |
-| Database         | PostgreSQL                                                   |
+- **AI Integration**
+  - Text-to-Speech conversion
+  - Image generation from prompts
+  - Content summarization
 
-## 🗂️ Microservices (Planned)
+### 3. Security Implementation
+- JWT-based authentication
+- Role-based access control
+- Secure password handling
+- Token-based API access
 
-- `auth-service` → Handles login, registration, JWT
-- `user-service` → Profile management, roles, tokens
-- `writing-service` → Chapter creation, editor interface
-- `image-service` → AI image generation (calls Python server)
-- `audio-service` → TTS service integration
-- `summary-service` → AI summarization logic
-- `payment-service` → Token recharge, Stripe/PayPal integration
-- `notification-service` → Optional, email / system messages
+### 4. Token System
+- Initial token balance for new users
+- Token usage tracking
+- Payment integration for token purchase
+- Usage logging and monitoring
 
-## 🚀 DevOps Stack
+### 5. Media Management
+- MinIO for audio file storage
+- Image storage and retrieval
+- CORS configuration for web access
+- Secure file access control
 
-- ✅ Jenkins for automated build and deployment
-- 🐳 Docker for containerizing all services
-- ☸️ Kubernetes for orchestration and scaling
-- 🔍 Prometheus + Grafana for real-time monitoring
-- 📦 GitHub for codebase and version control
+## 🚀 Key Features
 
-## Getting Started
+### 1. Writing Platform
+- Rich text editor for fantasy story creation
+- Chapter organization and management
+- Real-time saving and version control
 
-1. Clone the repository:
+### 2. AI-Powered Features
+- **Image Generation**: Convert text descriptions into visual scenes
+- **Audio Narration**: Transform written content into natural-sounding audio
+
+### 3. User Management
+- Secure authentication and authorization
+- Role-based access control (Writer, Editor, Admin)
+- User profile management
+
+## 🛠️ Technology Stack
+
+### Backend
+- **Framework**: Spring Boot (Java)
+- **Databases**: 
+  - PostgreSQL for user management and authentication
+  - MongoDB for content storage (books, chapters, pages)
+- **Authentication**: JWT-based security
+- **API**: RESTful architecture
+
+### Frontend
+- **Framework**: React with TypeScript
+- **Styling**: Tailwind CSS
+- **Build Tool**: Vite
+- **State Management**: React Context/Hooks
+
+### Storage & Media
+- **MinIO**: Object storage for audio files and generated images
+  - S3-compatible storage solution
+  - Used for storing and serving media files
+  - Configured with CORS for web access
+- **MongoDB**: Document database for content
+  - Stores books, chapters, pages, and summaries
+  - Handles flexible document structures
+  - Supports complex queries and relationships
+
+### AI Services
+- **Audio Service**: Python-based TTS implementation
+- **Image Generation**: Integration with AI image generation APIs
+- **Text Processing**: Natural Language Processing for summaries
+
+## 🚀 Getting Started
+
+### Prerequisites
+- Java 21 or later
+- Node.js 18+ and npm
+- Python 3.8+ (for audio service)
+- Docker and Docker Compose
+- MongoDB 6.0+
+- MinIO Server
+
+### Backend Setup
+1. Navigate to the backend directory:
 ```bash
-git clone <repository-url>
-cd fantasy-writer-ai
+cd backend/CoreService
 ```
 
-2. Set up the backend:
+2. Build and run using Maven:
+```bash
+./mvnw clean install
+./mvnw spring-boot:run
+```
+
+### Frontend Setup
+1. Navigate to the Frontend directory:
+```bash
+cd Frontend
+```
+
+2. Install dependencies:
+```bash
+npm install
+```
+
+3. Start the development server:
+```bash
+npm run dev
+```
+
+### Audio Service Setup
+1. Navigate to the audio-service directory:
+```bash
+cd audio-service
+```
+
+2. Create and activate a virtual environment:
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+3. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+4. Run the service:
+```bash
+python audio_service.py
+```
+
+### Database Setup
+1. Start MongoDB and MinIO using Docker Compose:
 ```bash
 cd backend
+docker-compose up -d
+```
+
+## 🔧 Development
+
+### Code Style
+- Backend follows Java best practices and Spring Boot conventions
+- Frontend uses ESLint and Prettier for code formatting
+- Python code follows PEP 8 guidelines
+
+### Testing
+- Backend: JUnit tests for core functionality
+- Frontend: React Testing Library for component testing
+- Integration tests for API endpoints
+
+## 📦 Deployment
+
+The application is containerized using Docker and can be deployed using Docker Compose:
+
+```bash
 docker-compose up --build
 ```
-
-3. Set up the frontend (coming soon):
-```bash
-cd frontend
-# Frontend setup instructions will be added
-```
-
-## 🏗️ Project Status
-
-> 🚧 Under active development.  
-> Contributions, issues, and suggestions are welcome!
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a new Pull Request
-
