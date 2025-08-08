@@ -180,22 +180,6 @@ cd backend
 docker-compose up -d
 ```
 
-## 🔧 Development
+## Demo
 
-### Code Style
-- Backend follows Java best practices and Spring Boot conventions
-- Frontend uses ESLint and Prettier for code formatting
-- Python code follows PEP 8 guidelines
-
-### Testing
-- Backend: JUnit tests for core functionality
-- Frontend: React Testing Library for component testing
-- Integration tests for API endpoints
-
-## 📦 Deployment
-
-The application is containerized using Docker and can be deployed using Docker Compose:
-
-```bash
-docker-compose up --build
-```
+[Demo Video](https://drive.google.com/file/d/1mvir7MDbPwMRGEZHcnwV-_E-YUYvbhFO/view?usp=sharing)
