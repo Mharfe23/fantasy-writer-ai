@@ -1,6 +1,8 @@
 flask
 werkzeug
 flask-cors
+flask-caching
+redis
 kokoro>=0.9.4
 soundfile
 minio

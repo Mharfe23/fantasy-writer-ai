@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from flask_caching import Cache
 from kokoro import KPipeline
 import soundfile as sf
 import io
@@ -17,6 +18,7 @@ from dotenv import load_dotenv
 import base64
 import logging
 from urllib.parse import urlparse
+import hashlib
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -28,10 +30,19 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)
 
-# Get Hugging Face token from environment variable
-HF_TOKEN = os.getenv('HUGGINGFACE_TOKEN')
-if not HF_TOKEN:
-    print("Warning: HUGGINGFACE_TOKEN environment variable not set")
+# Configure caching
+cache_config = {
+    'CACHE_TYPE': 'RedisCache',
+    'CACHE_REDIS_HOST': os.getenv('REDIS_HOST', 'localhost'),
+    'CACHE_REDIS_PORT': int(os.getenv('REDIS_PORT', 6379)),
+    'CACHE_REDIS_DB': int(os.getenv('REDIS_DB', 0)),
+    'CACHE_REDIS_PASSWORD': os.getenv('REDIS_PASSWORD', None),
+    'CACHE_DEFAULT_TIMEOUT': int(os.getenv('CACHE_TIMEOUT', 3600)),  # 1 hour default
+    'CACHE_KEY_PREFIX': 'audio_service:'
+}
+
+app.config.from_mapping(cache_config)
+cache = Cache(app)
 
 # Define directories
 VOICES_DIR = os.path.join(os.path.dirname(__file__), 'voices')
@@ -75,7 +86,7 @@ try:
 except Exception as e:
     print(f"Warning: {str(e)}")
 
-# Initialize Kokoro TTS pipeline with Hugging Face token
+# Initialize Kokoro TTS pipeline
 pipeline = KPipeline(lang_code='a')
 
 # Available voices
@@ -94,9 +105,71 @@ for name in VOICE_NAMES:
     except Exception as e:
         print(f"Warning: Could not load voice tensor for {name}: {str(e)}")
 
+def generate_cache_key(*args):
+    """Generate a cache key from arguments"""
+    content = '|'.join(str(arg) for arg in args)
+    return hashlib.md5(content.encode()).hexdigest()
+
 def get_db_connection():
     """Create a database connection"""
     return psycopg2.connect(**DB_CONFIG)
+
+@cache.memoize(timeout=86400)  # Cache voice tensors for 24 hours
+def get_cached_voice_tensor(voice_name):
+    """Get and cache voice tensor"""
+    if voice_name in VOICE_TENSORS:
+        return VOICE_TENSORS[voice_name]
+    return None
+
+@cache.memoize(timeout=3600)  # Cache custom voice queries for 1 hour
+def get_cached_custom_voice(voice_name, user_id):
+    """Get and cache custom voice data from database"""
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT voice_url FROM favorite_voices 
+                WHERE voice_name = %s AND user_id = %s
+            """, (voice_name, user_id))
+            result = cur.fetchone()
+            return dict(result) if result else None
+    except psycopg2.Error as e:
+        logger.error(f"Database error in get_cached_custom_voice: {str(e)}")
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+@cache.memoize(timeout=1800)  # Cache custom voice list for 30 minutes
+def get_cached_custom_voices_list(user_id):
+    """Get and cache list of custom voices for a user"""
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT 
+                    id,
+                    voice_name,
+                    voice_id1,
+                    voice_id2,
+                    voice_weight1,
+                    voice_weight2,
+                    voice_url,
+                    user_id
+                FROM favorite_voices 
+                WHERE user_id = %s
+                ORDER BY voice_name
+            """, (user_id,))
+            voices = cur.fetchall()
+            return [dict(voice) for voice in voices]
+    except psycopg2.Error as e:
+        logger.error(f"Database error in get_cached_custom_voices_list: {str(e)}")
+        return []
+    finally:
+        if conn:
+            conn.close()
 
 def save_audio_to_minio(audio_data, user_id, prefix="audio"):
     """Helper function to save audio data to MinIO"""
@@ -172,82 +245,77 @@ def generate_audio():
             
         print(f"Generating audio with voice: {voice}, speed: {speed}")
         
-        # Check if it's a custom voice
-        conn = None
-        try:
-            conn = get_db_connection()
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("""
-                    SELECT voice_url FROM favorite_voices 
-                    WHERE voice_name = %s AND user_id = %s
-                """, (voice, user_id))
-                voice_data = cur.fetchone()
+        # Generate cache key for this audio generation request
+        audio_cache_key = generate_cache_key(text, voice, speed)
+        
+        # Check if audio is already cached
+        cached_audio = cache.get(audio_cache_key)
+        if cached_audio:
+            logger.info(f"Returning cached audio for key: {audio_cache_key}")
+            return jsonify(cached_audio)
+        
+        # Check if it's a custom voice using cached function
+        voice_data = get_cached_custom_voice(voice, user_id)
+        
+        if voice_data:
+            # It's a custom voice, load from MinIO
+            try:
+                # Extract bucket and object name from the URL
+                voice_url = voice_data['voice_url']
+                if not voice_url:
+                    return jsonify({
+                        "error": "Voice URL is missing",
+                        "details": "The voice tensor might have been deleted from storage"
+                    }), 404
+                    
+                # Generate cache key for custom voice tensor
+                custom_voice_cache_key = generate_cache_key("custom_voice_tensor", voice_url)
                 
-                if voice_data:
-                    # It's a custom voice, load from MinIO
+                # Check if custom voice tensor is cached
+                voice_tensor = cache.get(custom_voice_cache_key)
+                if voice_tensor is None:
+                    # Load and cache the custom voice tensor
                     try:
-                        # Extract bucket and object name from the URL
-                        voice_url = voice_data['voice_url']
-                        if not voice_url:
-                            return jsonify({
-                                "error": "Voice URL is missing",
-                                "details": "The voice tensor might have been deleted from storage"
-                            }), 404
-                            
-                        # The URL format is like: http://localhost:9000/fantasy-audio/voice/user_id/filename.pt
-                        try:
-                            # Parse the URL to get the path
-                            parsed_url = urlparse(voice_url)
-                            path_parts = parsed_url.path.strip('/').split('/')
-                            
-                            # Remove the bucket name from the path
-                            if path_parts[0] == BUCKET_NAME:
-                                path_parts = path_parts[1:]
-                            
-                            # Join the remaining parts to get the object name
-                            object_name = '/'.join(path_parts)
-                            
-                            # Download the tensor
-                            try:
-                                response = minio_client.get_object(BUCKET_NAME, object_name)
-                                # Read the response data into a BytesIO buffer
-                                buffer = io.BytesIO(response.read())
-                                voice_tensor = torch.load(buffer)
-                            except Exception as e:
-                                return jsonify({
-                                    "error": "Failed to load voice tensor",
-                                    "details": f"The voice tensor could not be loaded: {str(e)}"
-                                }), 500
-                                
-                        except Exception as e:
-                            print(f"Error parsing voice URL: {str(e)}")
-                            return jsonify({
-                                "error": "Invalid voice URL format",
-                                "details": "The voice URL is malformed"
-                            }), 500
-                    except Exception as e:
-                        print(f"Error downloading tensor from MinIO: {str(e)}")
-                        return jsonify({
-                            "error": "Failed to access voice storage",
-                            "details": "Could not access the voice tensor storage"
-                        }), 500
-                else:
-                    # It's a default voice
-                    if voice not in VOICE_NAMES:
-                        return jsonify({"error": f"Voice {voice} not found"}), 400
-                    voice_tensor = VOICE_TENSORS.get(voice)
-                    if voice_tensor is None:
-                        return jsonify({"error": f"Could not load voice tensor for {voice}"}), 500
+                        # Parse the URL to get the path
+                        parsed_url = urlparse(voice_url)
+                        path_parts = parsed_url.path.strip('/').split('/')
                         
-        except psycopg2.Error as e:
-            print(f"Database error: {str(e)}")
-            return jsonify({
-                "error": "Database error occurred",
-                "details": "Could not access the voice database"
-            }), 500
-        finally:
-            if conn:
-                conn.close()
+                        # Remove the bucket name from the path
+                        if path_parts[0] == BUCKET_NAME:
+                            path_parts = path_parts[1:]
+                        
+                        # Join the remaining parts to get the object name
+                        object_name = '/'.join(path_parts)
+                        
+                        # Download the tensor
+                        response = minio_client.get_object(BUCKET_NAME, object_name)
+                        # Read the response data into a BytesIO buffer
+                        buffer = io.BytesIO(response.read())
+                        voice_tensor = torch.load(buffer)
+                        
+                        # Cache the loaded tensor for 1 hour
+                        cache.set(custom_voice_cache_key, voice_tensor, timeout=3600)
+                        logger.info(f"Cached custom voice tensor: {custom_voice_cache_key}")
+                        
+                    except Exception as e:
+                        return jsonify({
+                            "error": "Failed to load voice tensor",
+                            "details": f"The voice tensor could not be loaded: {str(e)}"
+                        }), 500
+                        
+            except Exception as e:
+                print(f"Error accessing custom voice: {str(e)}")
+                return jsonify({
+                    "error": "Failed to access voice storage",
+                    "details": "Could not access the voice tensor storage"
+                }), 500
+        else:
+            # It's a default voice, use cached function
+            if voice not in VOICE_NAMES:
+                return jsonify({"error": f"Voice {voice} not found"}), 400
+            voice_tensor = get_cached_voice_tensor(voice)
+            if voice_tensor is None:
+                return jsonify({"error": f"Could not load voice tensor for {voice}"}), 500
                 
         # Generate audio using Kokoro
         try:
@@ -303,6 +371,10 @@ def generate_audio():
             "userId": user_id
         }
         
+        # Cache the generated audio for 1 hour
+        cache.set(audio_cache_key, audio_metadata, timeout=3600)
+        logger.info(f"Cached generated audio: {audio_cache_key}")
+        
         return jsonify(audio_metadata)
         
     except Exception as e:
@@ -310,8 +382,13 @@ def generate_audio():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/audio/voices', methods=['GET'])
+@cache.cached(timeout=86400)  # Cache voices list for 24 hours
 def get_voices():
-    return jsonify(VOICE_NAMES)
+    response = jsonify(VOICE_NAMES)
+    # Add cache headers
+    response.headers['Cache-Control'] = 'public, max-age=86400'
+    response.headers['ETag'] = generate_cache_key("voices_list", len(VOICE_NAMES))
+    return response
 
 @app.route('/api/audio/create-custom-voice', methods=['POST'])
 def create_custom_voice():
@@ -424,6 +501,10 @@ def create_custom_voice():
                 
                 if not voice_metadata:
                     raise Exception("Failed to create voice record")
+                
+                # Invalidate cached custom voices list for this user
+                cache.delete_memoized(get_cached_custom_voices_list, user_id)
+                logger.info(f"Invalidated custom voices cache for user: {user_id}")
                     
                 return jsonify(voice_metadata)
                 
@@ -476,10 +557,6 @@ def test_custom_voice():
         if voice1_tensor is None or voice2_tensor is None:
             return jsonify({"error": "Invalid voice tensors"}), 400
             
-        # Ensure tensors are on the same device
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        voice1_tensor = voice1_tensor.to(device)
-        voice2_tensor = voice2_tensor.to(device)
         
         # Blend voices
         blended_voice = (weight1 * voice1_tensor + weight2 * voice2_tensor) / (weight1 + weight2)
@@ -530,41 +607,102 @@ def get_custom_voices():
         
         if not user_id:
             return jsonify({"error": "User ID is required"}), 400
-            
-        conn = None
-        try:
-            conn = get_db_connection()
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("""
-                    SELECT 
-                        id,
-                        voice_name,
-                        voice_id1,
-                        voice_id2,
-                        voice_weight1,
-                        voice_weight2,
-                        voice_url,
-                        user_id
-                    FROM favorite_voices 
-                    WHERE user_id = %s
-                    ORDER BY voice_name
-                """, (user_id,))
-                voices = cur.fetchall()
-                
-                # Debug log
-                print("Found custom voices:", [dict(voice) for voice in voices])
-                
-                return jsonify([dict(voice) for voice in voices])
-                
-        except psycopg2.Error as e:
-            print(f"Database error: {str(e)}")
-            return jsonify({"error": "Database error occurred"}), 500
-        finally:
-            if conn:
-                conn.close()
+        
+        # Use cached function to get custom voices
+        voices = get_cached_custom_voices_list(user_id)
+        
+        # Debug log
+        print("Found custom voices:", voices)
+        
+        response = jsonify(voices)
+        # Add cache headers
+        response.headers['Cache-Control'] = 'public, max-age=1800'  # 30 minutes
+        response.headers['ETag'] = generate_cache_key("custom_voices", user_id, len(voices))
+        
+        return response
                 
     except Exception as e:
         print(f"Unexpected error in get_custom_voices: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+# Cache management endpoints for debugging and administration
+@app.route('/api/cache/stats', methods=['GET'])
+def cache_stats():
+    """Get cache statistics and health"""
+    try:
+        # Check Redis connection
+        redis_client = cache.cache._write_client
+        info = redis_client.info()
+        
+        stats = {
+            "redis_connected": True,
+            "redis_version": info.get('redis_version'),
+            "used_memory": info.get('used_memory_human'),
+            "connected_clients": info.get('connected_clients'),
+            "total_commands_processed": info.get('total_commands_processed'),
+            "keyspace_hits": info.get('keyspace_hits'),
+            "keyspace_misses": info.get('keyspace_misses'),
+            "cache_hit_ratio": round(
+                info.get('keyspace_hits', 0) / 
+                max(info.get('keyspace_hits', 0) + info.get('keyspace_misses', 0), 1) * 100, 2
+            ) if info.get('keyspace_hits') is not None else 0
+        }
+        
+        return jsonify(stats)
+    except Exception as e:
+        return jsonify({
+            "redis_connected": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/api/cache/clear', methods=['POST'])
+def clear_cache():
+    """Clear all cache entries"""
+    try:
+        data = request.json or {}
+        cache_type = data.get('type', 'all')
+        
+        if cache_type == 'all':
+            cache.clear()
+            message = "All cache cleared"
+        elif cache_type == 'audio':
+            # Clear audio generation cache (would need specific implementation)
+            # For now, clear all as we don't have pattern-specific clearing
+            cache.clear()
+            message = "Audio cache cleared"
+        elif cache_type == 'voices':
+            # Clear voice-related cache
+            cache.clear()
+            message = "Voice cache cleared"
+        else:
+            return jsonify({"error": "Invalid cache type"}), 400
+            
+        logger.info(f"Cache cleared: {cache_type}")
+        return jsonify({"message": message})
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/cache/invalidate-user', methods=['POST'])
+def invalidate_user_cache():
+    """Invalidate cache for a specific user"""
+    try:
+        data = request.json
+        user_id = data.get('user_id') if data else None
+        
+        if not user_id:
+            return jsonify({"error": "User ID is required"}), 400
+        
+        # Invalidate user-specific cached data
+        cache.delete_memoized(get_cached_custom_voices_list, user_id)
+        
+        # Note: Audio generation cache would need pattern-based deletion
+        # which isn't directly supported by Flask-Caching
+        logger.info(f"Invalidated cache for user: {user_id}")
+        
+        return jsonify({"message": f"Cache invalidated for user {user_id}"})
+        
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
