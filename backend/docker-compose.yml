@@ -59,6 +59,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+  
+  redis-flask:
+    image: redis
+    ports:
+      - "6379:6379"
 
 
 volumes:
