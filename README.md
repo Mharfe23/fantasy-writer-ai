@@ -53,14 +53,14 @@ fantasy-writer-ai/
 - Role-based access control
 - Secure password handling
 - Token-based API access
-
+<!--
 ### 4. Token System
 - Initial token balance for new users
 - Token usage tracking
 - Payment integration for token purchase
 - Usage logging and monitoring
-
-### 5. Media Management
+-->
+### 4. Media Management
 - MinIO for audio file storage
 - Image storage and retrieval
 - CORS configuration for web access
